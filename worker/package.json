@@ -1,0 +1,15 @@
+{
+  "name": "mails-worker",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --port 3160",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create mails",
+    "db:schema": "wrangler d1 execute mails --file=schema.sql",
+    "db:schema:local": "wrangler d1 execute mails --local --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4",
+    "@cloudflare/workers-types": "^4"
+  }
+}

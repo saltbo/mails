@@ -1,0 +1,43 @@
+{
+  "name": "mails",
+  "version": "1.0.0",
+  "description": "Email infrastructure for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mails": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/cli/index.ts --outfile dist/cli.js --target bun && bun build src/index.ts --outfile dist/index.js --target bun",
+    "build:compile": "bun build src/cli/index.ts --compile --outfile mails",
+    "dev": "bun run src/cli/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist",
+    "skill.md"
+  ],
+  "keywords": [
+    "email",
+    "mail",
+    "agent",
+    "ai",
+    "resend",
+    "cloudflare",
+    "cli"
+  ],
+  "author": "turing <o.u.turing@gmail.com>",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}
