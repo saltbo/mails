@@ -7,6 +7,13 @@ AIエージェント向けのメールインフラ。プログラムでメール
 
 [English](README.md) | [中文](README.zh.md)
 
+## テストカバレッジ
+
+```
+全ファイル: 100.00% Functions | 100.00% Lines
+ユニットテスト 78件 + ライブ E2E テスト 8件（実際の Resend + Cloudflare Email Routing）
+```
+
 ## 特徴
 
 - **メール送信** — Resend経由（他のプロバイダーも追加予定）

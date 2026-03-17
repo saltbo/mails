@@ -7,6 +7,13 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
+## 测试覆盖率
+
+```
+全部文件: 100.00% Functions | 100.00% Lines
+78 个单元测试 + 8 个 Live E2E 测试（真实 Resend + Cloudflare Email Routing）
+```
+
 ## 特性
 
 - **发送邮件** — 通过 Resend（更多 Provider 即将支持）
