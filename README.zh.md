@@ -7,13 +7,6 @@
 
 [English](https://github.com/chekusu/mails/blob/main/README.md) | [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md)
 
-## 测试覆盖率
-
-```
-全部文件: 100.00% Functions | 100.00% Lines
-78 个单元测试 + 8 个 Live E2E 测试（真实 Resend + Cloudflare Email Routing）
-```
-
 ## 特性
 
 - **发送邮件** — 通过 Resend（更多 Provider 即将支持）
@@ -151,9 +144,12 @@ mails config set db9_database_id YOUR_DB_ID
 ## 测试
 
 ```bash
-bun test              # 运行所有测试
-bun test --coverage   # 带覆盖率报告
+bun test              # 运行所有测试（单元 78 + E2E 1）
+bun test:coverage     # 带覆盖率报告
+bun test:live         # Live E2E（真实 Resend + Cloudflare，需要 .env）
 ```
+
+全部文件: 100.00% Functions | 100.00% Lines — 78 个单元测试 + 8 个 Live E2E 测试
 
 ## 许可证
 

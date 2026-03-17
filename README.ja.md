@@ -7,13 +7,6 @@ AIエージェント向けのメールインフラ。プログラムでメール
 
 [English](https://github.com/chekusu/mails/blob/main/README.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
 
-## テストカバレッジ
-
-```
-全ファイル: 100.00% Functions | 100.00% Lines
-ユニットテスト 78件 + ライブ E2E テスト 8件（実際の Resend + Cloudflare Email Routing）
-```
-
 ## 特徴
 
 - **メール送信** — Resend経由（他のプロバイダーも追加予定）
@@ -137,9 +130,12 @@ mails config set db9_database_id YOUR_DB_ID
 ## テスト
 
 ```bash
-bun test              # 全テスト実行
-bun test --coverage   # カバレッジレポート付き
+bun test              # 全テスト実行（ユニット78件 + E2E 1件）
+bun test:coverage     # カバレッジレポート付き
+bun test:live         # ライブE2E（実際の Resend + Cloudflare、.env が必要）
 ```
+
+全ファイル: 100.00% Functions | 100.00% Lines — ユニットテスト 78件 + ライブE2Eテスト 8件
 
 ## ライセンス
 

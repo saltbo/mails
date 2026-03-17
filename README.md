@@ -7,26 +7,6 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
 
-## Test Coverage
-
-```
----------------------------------|---------|---------|
-File                             | % Funcs | % Lines |
----------------------------------|---------|---------|
-All files                        |  100.00 |  100.00 |
- src/cli/commands/help.ts        |  100.00 |  100.00 |
- src/core/config.ts              |  100.00 |  100.00 |
- src/core/send.ts                |  100.00 |  100.00 |
- src/core/types.ts               |  100.00 |  100.00 |
- src/providers/send/resend.ts    |  100.00 |  100.00 |
- src/providers/storage/db9.ts    |  100.00 |  100.00 |
- src/providers/storage/sqlite.ts |  100.00 |  100.00 |
- worker/src/extract-code.ts      |  100.00 |  100.00 |
----------------------------------|---------|---------|
-
-78 unit tests + 8 live E2E tests (real Resend + Cloudflare Email Routing)
-```
-
 ## Features
 
 - **Send emails** via Resend (more providers coming)
@@ -187,8 +167,29 @@ mails config set db9_database_id YOUR_DB_ID
 ## Testing
 
 ```bash
-bun test              # Run all tests
-bun test --coverage   # With coverage report
+bun test              # Run all tests (78 unit + 1 E2E)
+bun test:coverage     # With coverage report
+bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
+```
+
+### Test Coverage
+
+```
+---------------------------------|---------|---------|
+File                             | % Funcs | % Lines |
+---------------------------------|---------|---------|
+All files                        |  100.00 |  100.00 |
+ src/cli/commands/help.ts        |  100.00 |  100.00 |
+ src/core/config.ts              |  100.00 |  100.00 |
+ src/core/send.ts                |  100.00 |  100.00 |
+ src/core/types.ts               |  100.00 |  100.00 |
+ src/providers/send/resend.ts    |  100.00 |  100.00 |
+ src/providers/storage/db9.ts    |  100.00 |  100.00 |
+ src/providers/storage/sqlite.ts |  100.00 |  100.00 |
+ worker/src/extract-code.ts      |  100.00 |  100.00 |
+---------------------------------|---------|---------|
+
+78 unit tests + 8 live E2E tests (real Resend + Cloudflare Email Routing)
 ```
 
 ## License
