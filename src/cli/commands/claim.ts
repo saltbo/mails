@@ -1,7 +1,7 @@
 import { setConfigValue } from '../../core/config.js'
 
-const API_BASE = 'https://mails-dev-worker.o-u-turing.workers.dev'
-const CLAIM_PAGE = 'https://mails.dev/claim'
+const API_BASE = process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails.dev/claim'
 const POLL_INTERVAL = 2000
 
 export async function claimCommand(args: string[]) {
