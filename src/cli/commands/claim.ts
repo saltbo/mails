@@ -23,7 +23,6 @@ export async function claimCommand(args: string[]) {
   const startData = await startRes.json() as {
     session_id?: string
     device_code?: string
-    url?: string
     error?: string
   }
 
@@ -35,28 +34,40 @@ export async function claimCommand(args: string[]) {
   const { session_id, device_code } = startData
   const claimUrl = `${CLAIM_PAGE}?session=${session_id}&name=${encodeURIComponent(name)}`
 
-  // 2. Show info and open browser
-  console.log('')
-  console.log(`  Claim: ${name}@mails.dev`)
-  console.log(`  Code:  ${device_code}`)
-  console.log('')
-  console.log(`  ${claimUrl}`)
-  console.log('')
-  console.log(`  Or visit ${CLAIM_PAGE} and enter the code above.`)
-  console.log('')
-
-  // Try to open browser
+  // 2. Try to open browser
+  let browserOpened = false
   try {
-    const { exec } = await import('child_process')
+    const { execSync } = await import('child_process')
     const platform = process.platform
     const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open'
-    exec(`${cmd} "${claimUrl}"`)
+    execSync(`${cmd} "${claimUrl}"`, { stdio: 'ignore', timeout: 3000 })
+    browserOpened = true
   } catch {}
 
-  // 3. Poll for result
+  // 3. Show info
+  console.log('')
+  if (browserOpened) {
+    console.log(`  Claiming ${name}@mails.dev — confirm in your browser.`)
+    console.log('')
+    console.log(`  If the page didn't open: ${claimUrl}`)
+  } else {
+    // No browser (sandbox / SSH / headless) — device code is primary
+    console.log(`  Claiming ${name}@mails.dev`)
+    console.log('')
+    console.log(`  To complete, ask a human to visit:`)
+    console.log('')
+    console.log(`    ${CLAIM_PAGE}`)
+    console.log('')
+    console.log(`  and enter this code:`)
+    console.log('')
+    console.log(`    ${device_code}`)
+  }
+  console.log('')
+
+  // 4. Poll for result
   process.stdout.write('  Waiting...')
 
-  const deadline = Date.now() + 10 * 60 * 1000 // 10 min timeout
+  const deadline = Date.now() + 10 * 60 * 1000
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL))
@@ -88,7 +99,6 @@ export async function claimCommand(args: string[]) {
       process.exit(1)
     }
 
-    // Still pending
     process.stdout.write('.')
   }
 
