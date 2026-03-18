@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { AttachmentBlobStore } from '../../core/types.js'
 
 const DEFAULT_DIR = join(homedir(), '.mails', 'attachments')
@@ -41,7 +41,15 @@ export function createFilesystemAttachmentBlobStore(baseDir = DEFAULT_DIR): Atta
 }
 
 function resolvePath(baseDir: string, key: string): string {
-  return join(baseDir, key)
+  const resolvedBaseDir = resolve(baseDir)
+  const resolvedPath = resolve(resolvedBaseDir, key)
+  const relativePath = relative(resolvedBaseDir, resolvedPath)
+
+  if (relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))) {
+    return resolvedPath
+  }
+
+  throw new Error(`Attachment key escapes blob store root: ${key}`)
 }
 
 export function buildFilesystemAttachmentKey(emailId: string, attachmentId: string, filename: string): string {

@@ -345,7 +345,7 @@ async function handleGetAttachment(url: URL, env: Env): Promise<Response> {
   return new Response(body, {
     headers: {
       'Content-Type': attachment.content_type || 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${escapeHeaderValue(attachment.filename)}"`,
+      'Content-Disposition': `attachment; filename="${sanitizeAttachmentFilename(attachment.filename)}"`,
       'Content-Length': String(content.byteLength),
     },
   })
@@ -376,8 +376,9 @@ function decodeBase64(value: string): Uint8Array {
   return bytes
 }
 
-function escapeHeaderValue(value: string): string {
-  return value.replace(/["\r\n]/g, '_')
+function sanitizeAttachmentFilename(value: string): string {
+  const filename = value.split(/[/\\]+/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') ?? 'attachment'
+  return filename.length > 0 ? filename : 'attachment'
 }
 
 async function forwardEmail(email: Email, env: Env): Promise<void> {

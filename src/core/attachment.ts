@@ -36,7 +36,7 @@ export async function downloadAttachment(id: string, outputPath?: string): Promi
       throw new Error(`Failed to download attachment: ${response.status} ${response.statusText}`)
     }
 
-    const filename = readFilename(response.headers.get('Content-Disposition')) ?? id
+    const filename = readFilename(response.headers.get('Content-Disposition')) ?? sanitizeFilename(id)
     const targetPath = resolve(outputPath ?? filename)
     await writeFile(targetPath, new Uint8Array(await response.arrayBuffer()))
     return targetPath
@@ -73,5 +73,10 @@ async function resolveLocalAttachmentContent(attachment: Attachment): Promise<Ui
 function readFilename(contentDisposition: string | null): string | null {
   if (!contentDisposition) return null
   const match = contentDisposition.match(/filename="?([^"]+)"?/)
-  return match ? match[1]! : null
+  return match ? sanitizeFilename(match[1]!) : null
+}
+
+function sanitizeFilename(value: string): string {
+  const filename = basename(value).replace(/[^A-Za-z0-9._-]/g, '_')
+  return filename.length > 0 ? filename : 'attachment'
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getAttachment, downloadAttachment } from '../../src/core/attachment'
 import { saveConfig } from '../../src/core/config'
@@ -16,6 +17,7 @@ const DEFAULT_CONFIG = {
 describe('attachment', () => {
   const originalFetch = globalThis.fetch
   const outputPath = join(import.meta.dir, '..', '.downloaded-attachment.txt')
+  const originalCwd = process.cwd()
 
   beforeEach(() => {
     saveConfig({
@@ -26,6 +28,7 @@ describe('attachment', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    process.chdir(originalCwd)
     if (existsSync(outputPath)) rmSync(outputPath)
     saveConfig(DEFAULT_CONFIG)
   })
@@ -71,5 +74,25 @@ describe('attachment', () => {
 
     expect(path).toBe(outputPath)
     expect(readFileSync(outputPath, 'utf8')).toBe('hello attachment')
+  })
+
+  test('downloadAttachment sanitizes worker-provided filenames', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mails-attachment-'))
+    process.chdir(dir)
+
+    globalThis.fetch = mock(async () =>
+      new Response('safe attachment', {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Content-Disposition': 'attachment; filename="../../escape.txt"',
+        },
+      })
+    ) as typeof fetch
+
+    const path = await downloadAttachment('att-3')
+
+    expect(path).toBe(join(dir, 'escape.txt'))
+    expect(readFileSync(path, 'utf8')).toBe('safe attachment')
+    rmSync(dir, { recursive: true, force: true })
   })
 })
