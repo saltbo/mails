@@ -253,6 +253,18 @@ curl "https://api.mails.dev/v1/claim/poll?session=xxx"
 ### Hosted endpoints (mails.dev, requires API key from claim)
 
 ```bash
+# Send email (100 free/month, then $0.002/email via x402 USDC)
+curl -X POST -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  "https://api.mails.dev/v1/send" \
+  -d '{"to":["user@example.com"],"subject":"Hello","text":"World"}'
+
+# Send with attachment (≤10MB total)
+curl -X POST -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  "https://api.mails.dev/v1/send" \
+  -d '{"to":["user@example.com"],"subject":"Report","text":"See attached","attachments":[{"filename":"report.pdf","content":"<base64>","content_type":"application/pdf"}]}'
+
 # List inbox
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/inbox"
