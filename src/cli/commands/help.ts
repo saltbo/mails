@@ -6,13 +6,19 @@ Usage:
   mails <command> [options]
 
 Commands:
+  login         Sign in to mails.dev
+  claim         Claim a @mails.dev mailbox for your agent
   send          Send an email
   inbox         List received emails
   code          Wait for a verification code
   config        View or modify configuration
-  setup         Interactive setup wizard (coming soon)
   help          Show this help message
   version       Show version
+
+Account:
+  mails login                           Sign in via mails.dev
+  mails login --token <token>           Save token directly
+  mails claim <name>                    Claim name@mails.dev (max 10 per user)
 
 Send:
   mails send --to <email> --subject <subject> --body <text>
@@ -33,17 +39,6 @@ Config:
   mails config set <key> <value>  Set a config value
   mails config get <key>          Get a config value
   mails config path               Show config file path
-
-Config keys:
-  mode              hosted | selfhosted
-  domain            Your email domain
-  mailbox           Your mailbox address
-  send_provider     resend (default)
-  storage_provider  sqlite | db9
-  resend_api_key    Resend API key
-  db9_token         db9.ai token
-  db9_database_id   db9.ai database ID
-  default_from      Default sender address
 
 https://mails.dev
 `.trim())
