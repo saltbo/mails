@@ -214,6 +214,8 @@ GET  /api/status          — 各项配置状态检查
   - 本地 `sqlite` / `db9` 都能持久化附件元数据和附件内容
   - 不强制 R2，不强制 Cloudflare blob 存储
   - keep-alive agent 可用 `mails serve` 或自定义 webhook 持续接收入站邮件
+  - 转发失败按 `best-effort` 处理，不做强制补偿队列
+  - 不预设固定“用户模式”，只暴露可自由组合的参数和接口
 
 ### Phase 3：Setup + mails.dev
 
@@ -251,6 +253,35 @@ GET  /api/status          — 各项配置状态检查
   - mails.dev — Landing + Setup
 
 ## 接口设计
+
+### 配置原则
+
+- 不预设 `local-first` / `cloud-only` / `db9-only` 这类固定模式
+- 只提供独立参数，让用户或 agent 自己组合
+- 接收链路、元数据存储、附件原文存储彼此解耦
+
+### AttachmentBlobStore Interface
+
+```typescript
+interface AttachmentBlobStore {
+  name: string
+  put(key: string, content: Uint8Array, options?: {
+    contentType?: string
+    metadata?: Record<string, string>
+  }): Promise<void>
+  get(key: string): Promise<Uint8Array | null>
+  delete(key: string): Promise<void>
+}
+```
+
+设计要求：
+
+- `filesystem` 作为首个默认实现
+- `r2` 作为可插拔实现，不进入主路径假设
+- `db9` 也允许作为可插拔实现
+- 上层只依赖接口，不依赖 backend 类型
+- 允许用户只启用转发、不启用附件原文云端存储
+- 允许后续再扩展 S3、其它对象存储、或数据库 blob 实现
 
 ### SendProvider Interface
 
