@@ -18,7 +18,7 @@ Claim:
   mails claim <name>                    Claim name@mails.dev (max 10 per user)
                                         Opens browser for human approval.
                                         In headless mode, shows a device code
-                                        for the human to enter at mails.dev/claim.
+                                        for the human to enter at mails.dev.
 
 Send:
   mails send --to <email> --subject <subject> --body <text>
@@ -45,7 +45,7 @@ Config:
 
 Environment:
   MAILS_API_URL       Override API base URL (default: https://api.mails.dev)
-  MAILS_CLAIM_URL     Override claim page URL (default: https://mails.dev/claim)
+  MAILS_CLAIM_URL     Override claim page URL (default: https://mails.dev)
 
 https://mails.dev
 `.trim())

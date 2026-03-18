@@ -1,7 +1,7 @@
 import { setConfigValue } from '../../core/config.js'
 
 const API_BASE = process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
-const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails.dev/claim'
+const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails.dev'
 const POLL_INTERVAL = 2000
 
 export async function claimCommand(args: string[]) {
@@ -32,7 +32,7 @@ export async function claimCommand(args: string[]) {
   }
 
   const { session_id, device_code } = startData
-  const claimUrl = `${CLAIM_PAGE}?session=${session_id}&name=${encodeURIComponent(name)}`
+  const claimUrl = `${CLAIM_PAGE}?session=${session_id}&claim=${encodeURIComponent(name)}&source=cli`
 
   // 2. Try to open browser
   let browserOpened = false

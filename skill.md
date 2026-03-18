@@ -29,7 +29,7 @@ mails claim <pick-a-name>
 
   To complete, ask a human to visit:
 
-    https://mails.dev/claim
+    https://mails.dev
 
   and enter this code:
 
@@ -297,7 +297,7 @@ curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MAILS_API_URL` | `https://api.mails.dev` | Override API base URL |
-| `MAILS_CLAIM_URL` | `https://mails.dev/claim` | Override claim page URL |
+| `MAILS_CLAIM_URL` | `https://mails.dev` | Override claim page URL |
 
 ## Links
 
