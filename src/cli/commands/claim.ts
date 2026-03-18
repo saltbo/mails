@@ -1,6 +1,6 @@
-import { getConfigValue, setConfigValue } from '../../core/config.js'
+import { setConfigValue } from '../../core/config.js'
 
-const API_BASE = 'https://mails-dev-worker.o-u-turing.workers.dev'
+const CLAIM_URL = 'https://mails.dev/claim'
 
 export async function claimCommand(args: string[]) {
   const name = args[0]
@@ -11,39 +11,76 @@ export async function claimCommand(args: string[]) {
     process.exit(1)
   }
 
-  const token = getConfigValue('user_token')
-  if (!token) {
-    console.error('Not logged in. Run: mails login')
-    process.exit(1)
-  }
+  // Start local callback server
+  const { resolve, promise } = Promise.withResolvers<{ mailbox: string; api_key: string }>()
+  let timeout: ReturnType<typeof setTimeout>
 
-  const res = await fetch(`${API_BASE}/v1/claim`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+  const server = Bun.serve({
+    port: 0, // random port
+    fetch(req) {
+      const url = new URL(req.url)
+
+      if (req.method === 'OPTIONS') {
+        return new Response(null, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        })
+      }
+
+      if (url.pathname === '/callback' && req.method === 'POST') {
+        return req.json().then((data: any) => {
+          resolve(data)
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            },
+          })
+        })
+      }
+
+      return new Response('Not found', { status: 404 })
     },
-    body: JSON.stringify({ address: name }),
   })
 
-  const data = await res.json() as { mailbox?: string; api_key?: string; error?: string }
+  const port = server.port
+  const claimUrl = `${CLAIM_URL}?name=${encodeURIComponent(name)}&port=${port}`
 
-  if (!res.ok) {
-    console.error(`Error: ${data.error}`)
+  console.log(`Opening browser to claim ${name}@mails.dev ...`)
+  console.log('')
+  console.log(`If the browser doesn't open, visit:`)
+  console.log(`  ${claimUrl}`)
+  console.log('')
+  console.log('Waiting for confirmation...')
+
+  // Open browser
+  const { exec } = await import('child_process')
+  const platform = process.platform
+  const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open'
+  exec(`${cmd} "${claimUrl}"`)
+
+  // Timeout after 5 minutes
+  timeout = setTimeout(() => {
+    console.error('\nTimeout: no response received. Try again.')
+    server.stop()
     process.exit(1)
-  }
+  }, 5 * 60 * 1000)
 
-  // Save api_key and mailbox to config
-  setConfigValue('mailbox', data.mailbox!)
-  setConfigValue('api_key', data.api_key!)
+  // Wait for callback
+  const result = await promise
+  clearTimeout(timeout)
+  server.stop()
 
-  console.log(`Claimed: ${data.mailbox}`)
-  console.log(`API Key: ${data.api_key}`)
+  // Save to config
+  setConfigValue('mailbox', result.mailbox)
+  setConfigValue('api_key', result.api_key)
+
+  console.log('')
+  console.log(`Claimed: ${result.mailbox}`)
+  console.log(`API Key: ${result.api_key}`)
   console.log('')
   console.log('Saved to ~/.mails/config.json')
-  console.log('')
-  console.log('Your agent can now:')
-  console.log(`  • Receive emails at ${data.mailbox}`)
-  console.log(`  • Query inbox:  curl -H "Authorization: Bearer ${data.api_key}" ${API_BASE}/v1/inbox`)
-  console.log(`  • Wait for code: curl -H "Authorization: Bearer ${data.api_key}" "${API_BASE}/v1/code?timeout=30"`)
 }

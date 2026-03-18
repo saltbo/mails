@@ -3,7 +3,6 @@ import { sendCommand } from './commands/send.js'
 import { inboxCommand } from './commands/inbox.js'
 import { codeCommand } from './commands/code.js'
 import { configCommand } from './commands/config.js'
-import { loginCommand } from './commands/login.js'
 import { claimCommand } from './commands/claim.js'
 import { helpCommand } from './commands/help.js'
 
@@ -20,9 +19,6 @@ async function main() {
       break
     case 'code':
       await codeCommand(args.slice(1))
-      break
-    case 'login':
-      await loginCommand(args.slice(1))
       break
     case 'claim':
       await claimCommand(args.slice(1))
