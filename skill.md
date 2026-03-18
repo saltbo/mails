@@ -1,167 +1,212 @@
 # mails — Email for AI Agents
 
-Send and receive emails programmatically. Supports custom domains (self-hosted) or zero-config `@mails.dev` addresses (hosted).
+Send and receive emails. Get a free `@mails.dev` mailbox or use your own domain.
 
-## Quick Start (Hosted — recommended for agents)
+## Onboarding (follow these steps in order)
+
+### Step 1: Install
 
 ```bash
-# Install
-npm install -g mails    # or: bunx mails
+npm install -g mails
+```
 
-# Claim a @mails.dev mailbox (opens browser for human to approve)
-mails claim myagent
-# → myagent@mails.dev claimed, API key saved to ~/.mails/config.json
+Verify: `mails version` should print a version number.
 
-# Send
-mails send --to user@example.com --subject "Hello" --body "World"
+### Step 2: Claim a mailbox
 
-# Check inbox
+You need a `@mails.dev` email address. This requires a human to approve (one-time).
+
+```bash
+mails claim <pick-a-name>
+```
+
+**If you have a browser** (local machine): it will open automatically. The human approves, and the CLI receives the API key.
+
+**If you don't have a browser** (sandbox, SSH, CI): the CLI will show a code like this:
+
+```
+  Claiming myagent@mails.dev
+
+  To complete, ask a human to visit:
+
+    https://mails.dev/claim
+
+  and enter this code:
+
+    KDNR-CHPC
+
+  Waiting...
+```
+
+Relay the URL and code to your human user. Once they confirm, the CLI will continue and save the credentials to `~/.mails/config.json`.
+
+Verify: `mails config get mailbox` should print your address. `mails config get api_key` should print `mk_...`.
+
+### Step 3: Test receiving — check your inbox
+
+Your mailbox is ready to receive emails. Check it:
+
+```bash
 mails inbox
-
-# Wait for verification code
-mails code --to myagent@mails.dev --timeout 30
 ```
 
-## Claiming a @mails.dev Mailbox
+Expected: `No emails found.` (empty inbox is normal for a new mailbox).
 
-Each human user can create up to 10 free mailboxes for their agents.
+### Step 4: Configure sending
 
-### With browser (local machine)
+To send emails, you need a Resend API key. Get one at https://resend.com, then:
+
+```bash
+mails config set resend_api_key re_YOUR_KEY
+mails config set default_from "YourAgent <yourname@mails.dev>"
+```
+
+Note: sending from `@mails.dev` requires the domain to be verified on Resend. If you use a different sending domain (e.g. your own), set `default_from` accordingly.
+
+### Step 5: Test sending
+
+Send a test email to yourself:
+
+```bash
+mails send --to YOUR_MAILBOX@mails.dev --subject "Test" --body "Hello from mails"
+```
+
+Replace `YOUR_MAILBOX@mails.dev` with the address from Step 2. If sending from the same domain fails (Resend may suppress same-domain delivery), try sending to a different email address.
+
+Verify: `Sent via resend (id: ...)` confirms the email was sent.
+
+### Step 6: Test verification code extraction
+
+Send an email containing a code to your mailbox (from a different domain), then query it:
+
+```bash
+mails code --to YOUR_MAILBOX@mails.dev --timeout 30
+```
+
+This long-polls for up to 30 seconds. When an email with a verification code arrives, it prints the code to stdout. If no code arrives, it exits with code 1.
+
+### Onboarding complete
+
+You now have:
+- `~/.mails/config.json` with your mailbox, API key, and send config
+- A working `@mails.dev` address that receives emails
+- The ability to send emails via Resend
+
+---
+
+## CLI Reference
+
+```
+mails claim <name>        Claim name@mails.dev (max 10 per user)
+mails send                Send an email
+mails inbox               List received emails
+mails code                Wait for a verification code
+mails config              View or modify configuration
+mails help                Show help
+mails version             Show version
+```
+
+### claim
 
 ```bash
 mails claim myagent
-# Opens browser → human logs in via Clerk → confirms claim
-# CLI receives API key automatically via polling
 ```
 
-### Without browser (sandbox / SSH / headless)
+Opens browser (or shows device code) for human approval. On success, saves `mailbox` and `api_key` to config. Each human user can create up to 10 mailboxes.
+
+### send
 
 ```bash
-mails claim myagent
-# Output:
-#   Claiming myagent@mails.dev
-#
-#   To complete, ask a human to visit:
-#
-#     https://mails.dev/claim
-#
-#   and enter this code:
-#
-#     KDNR-CHPC
-#
-#   Waiting...
+mails send --to user@example.com --subject "Subject" --body "Plain text body"
+mails send --to user@example.com --subject "Subject" --html "<h1>HTML body</h1>"
+mails send --from "Name <email>" --to user@example.com --subject "Subject" --body "Text"
 ```
 
-The agent should relay the URL and code to its human user (e.g. via chat). Once the human confirms, the CLI receives the API key.
+Uses `default_from` from config if `--from` is not specified. Requires `resend_api_key` in config.
 
-### Claim API (for programmatic use)
+### inbox
 
 ```bash
-# 1. Start a claim session (no auth needed)
+mails inbox                           # List recent emails (uses mailbox from config)
+mails inbox --mailbox addr@mails.dev  # Specify mailbox
+mails inbox <email-id>                # Show full email details
+```
+
+### code
+
+```bash
+mails code --to addr@mails.dev              # Wait 30s (default)
+mails code --to addr@mails.dev --timeout 60 # Wait 60s
+```
+
+Prints the verification code to stdout (for piping: `CODE=$(mails code --to ...)`). Details go to stderr. Exits with code 1 if no code received within timeout.
+
+### config
+
+```bash
+mails config                    # Show all
+mails config set <key> <value>  # Set a value
+mails config get <key>          # Get a value
+mails config path               # Show config file path
+```
+
+Config file: `~/.mails/config.json`
+
+| Key | Set by | Description |
+|-----|--------|-------------|
+| `mailbox` | `mails claim` | Your @mails.dev receiving address |
+| `api_key` | `mails claim` | API key for inbox/code queries (mk_...) |
+| `resend_api_key` | manual | Resend API key for sending emails |
+| `default_from` | manual | Default sender address |
+| `storage_provider` | manual | `sqlite` (default) or `db9` |
+
+## SDK (Programmatic Usage)
+
+```typescript
+import { send, getInbox, waitForCode } from 'mails'
+
+// Send an email
+const result = await send({
+  to: 'user@example.com',
+  subject: 'Hello',
+  text: 'World',
+})
+
+// List inbox
+const emails = await getInbox('myagent@mails.dev', { limit: 10 })
+
+// Wait for verification code
+const code = await waitForCode('myagent@mails.dev', { timeout: 30 })
+if (code) console.log(code.code) // "123456"
+```
+
+## API (Direct HTTP)
+
+For agents that prefer raw HTTP over the CLI/SDK.
+
+### Claim flow (no auth)
+
+```bash
+# Start session
 curl -X POST https://api.mails.dev/v1/claim/start \
   -H "Content-Type: application/json" \
   -d '{"name": "myagent"}'
 # → {"session_id": "xxx", "device_code": "ABCD-1234", "expires_in": 600}
 
-# 2. Poll for result
+# Poll until human confirms (every 2s)
 curl "https://api.mails.dev/v1/claim/poll?session=xxx"
-# → {"status": "pending"} or {"status": "complete", "mailbox": "myagent@mails.dev", "api_key": "mk_xxx"}
-
-# 3. Human confirms at https://mails.dev/claim (enters device code or uses direct link)
+# → {"status": "pending"}
+# → {"status": "complete", "mailbox": "myagent@mails.dev", "api_key": "mk_xxx"}
 ```
 
-## Configuration
-
-Config lives at `~/.mails/config.json`. After `mails claim`, the key fields are set automatically:
-
-```json
-{
-  "mailbox": "myagent@mails.dev",
-  "api_key": "mk_xxx"
-}
-```
-
-Set additional values via CLI:
-
-```bash
-mails config set <key> <value>
-mails config get <key>
-mails config          # show all
-```
-
-| Key | Description |
-|-----|-------------|
-| `mailbox` | Your receiving address (set by `mails claim`) |
-| `api_key` | API key for inbox/code queries (set by `mails claim`) |
-| `resend_api_key` | Resend API key for sending (get one at resend.com) |
-| `default_from` | Default sender, e.g. `"Agent <agent@yourdomain.com>"` |
-| `storage_provider` | `sqlite` (local, default) or `db9` (db9.ai cloud) |
-
-## Sending Emails
-
-### CLI
-
-```bash
-# Plain text
-mails send --to user@example.com --subject "Report" --body "Here is your report."
-
-# HTML
-mails send --to user@example.com --subject "Report" --html "<h1>Report</h1><p>Details...</p>"
-
-# Custom sender
-mails send --from "Bot <bot@mydomain.com>" --to user@example.com --subject "Hi" --body "Hello"
-```
-
-### Programmatic (SDK)
-
-```typescript
-import { send } from 'mails'
-
-const result = await send({
-  to: 'user@example.com',
-  subject: 'Hello from agent',
-  text: 'This is a test email.',
-})
-console.log(result.id) // Resend message ID
-```
-
-## Receiving Emails
-
-After claiming a mailbox, query via CLI or API key:
-
-### CLI
-
-```bash
-# List inbox
-mails inbox
-mails inbox --mailbox myagent@mails.dev
-
-# Wait for verification code (long-poll)
-mails code --to myagent@mails.dev --timeout 30
-# Prints code to stdout for piping: CODE=$(mails code --to myagent@mails.dev)
-```
-
-### SDK
-
-```typescript
-import { getInbox, waitForCode } from 'mails'
-
-const emails = await getInbox('myagent@mails.dev', { limit: 10 })
-
-const result = await waitForCode('myagent@mails.dev', { timeout: 30 })
-if (result) {
-  console.log(result.code) // "123456"
-}
-```
-
-### API (with API key)
+### Authenticated endpoints (requires API key from claim)
 
 ```bash
 # List inbox
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/inbox"
 
-# Wait for verification code (long-poll up to 55s)
+# Wait for verification code
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/code?timeout=30"
 
@@ -170,34 +215,12 @@ curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/email?id=EMAIL_ID"
 ```
 
-## Self-Hosted Setup
+## Environment Variables
 
-For custom domains instead of @mails.dev:
-
-```bash
-mails setup
-```
-
-This opens a browser-based wizard at `mails.dev/setup` that guides you through:
-1. Cloudflare API token configuration
-2. DNS record setup (MX, SPF, DKIM, DMARC)
-3. Email Worker deployment
-4. Send provider (Resend) configuration
-5. Storage provider selection
-
-## Storage Providers
-
-### SQLite (default)
-Local database at `~/.mails/mails.db`. Zero config.
-
-### db9.ai
-Cloud PostgreSQL for agents. Enables multi-agent access to shared mailboxes.
-
-```bash
-mails config set storage_provider db9
-mails config set db9_token YOUR_TOKEN
-mails config set db9_database_id YOUR_DB_ID
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAILS_API_URL` | `https://api.mails.dev` | Override API base URL |
+| `MAILS_CLAIM_URL` | `https://mails.dev/claim` | Override claim page URL |
 
 ## Links
 
