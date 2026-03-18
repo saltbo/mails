@@ -1,5 +1,6 @@
 export { send } from './core/send.js'
 export { getAttachmentBlobStore } from './core/blob-store.js'
+export { downloadAttachment, getAttachment } from './core/attachment.js'
 export { getInbox, getEmail, waitForCode } from './core/receive.js'
 export { getStorage } from './core/storage.js'
 export { parseInboundEmail, saveInboundEmail } from './core/inbound.js'

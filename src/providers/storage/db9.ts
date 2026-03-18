@@ -169,6 +169,12 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
       return email
     },
 
+    async getAttachment(id) {
+      const result = await sql(`SELECT * FROM attachments WHERE id = ${text(id)} LIMIT 1`)
+      const attachments = rowsToAttachments(result)
+      return attachments[0] ?? null
+    },
+
     async getCode(mailbox, options) {
       const timeout = (options?.timeout ?? 30) * 1000
       const since = options?.since

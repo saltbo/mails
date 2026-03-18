@@ -41,8 +41,11 @@ CREATE TABLE IF NOT EXISTS attachments (
   text_content TEXT DEFAULT '',
   text_extraction_status TEXT NOT NULL DEFAULT 'pending',
   storage_key TEXT,
+  content_base64 TEXT,
   created_at TEXT NOT NULL
 );
+
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS content_base64 TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_emails_code ON emails(mailbox) WHERE code IS NOT NULL;

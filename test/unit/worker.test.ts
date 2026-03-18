@@ -79,4 +79,35 @@ describe('worker: MIME parsing', () => {
     expect(parsed.attachments[0]!.text_extraction_status).toBe('unsupported')
     expect(parsed.attachments[0]!.text_content).toBe('')
   })
+
+  test('includes attachment content when requested for storage or download', async () => {
+    const attachment = Buffer.from('download me').toString('base64')
+    const raw = [
+      'Subject: Download',
+      'Content-Type: multipart/mixed; boundary="boundary"',
+      '',
+      '--boundary',
+      'Content-Type: text/plain',
+      '',
+      'Body',
+      '--boundary',
+      'Content-Type: text/plain; name="notes.txt"',
+      'Content-Disposition: attachment; filename="notes.txt"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      attachment,
+      '--boundary--',
+      '',
+    ].join('\r\n')
+
+    const parsed = await parseIncomingEmail(
+      new TextEncoder().encode(raw).buffer,
+      'email-3',
+      '2026-03-18T00:00:00.000Z',
+      { includeContent: true }
+    )
+
+    expect(parsed.attachments[0]!.downloadable).toBe(true)
+    expect(parsed.attachments[0]!.content_base64).toBe(Buffer.from('download me').toString('base64'))
+  })
 })

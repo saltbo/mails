@@ -119,6 +119,7 @@ export interface StorageProvider {
     direction?: 'inbound' | 'outbound'
   }): Promise<Email[]>
   getEmail(id: string): Promise<Email | null>
+  getAttachment(id: string): Promise<Attachment | null>
   getCode(mailbox: string, options?: {
     timeout?: number
     since?: string

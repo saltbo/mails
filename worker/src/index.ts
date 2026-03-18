@@ -34,6 +34,9 @@ export default {
       case '/api/email':
         response = await handleGetEmail(url, env)
         break
+      case '/api/attachment':
+        response = await handleGetAttachment(url, env)
+        break
       case '/health':
         response = Response.json({ ok: true })
         break
@@ -53,12 +56,11 @@ export default {
     const from = message.from
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    const shouldForward = Boolean(env.FORWARD_URL)
     const parsed = await parseIncomingEmail(
       await new Response(message.raw).arrayBuffer(),
       id,
       now,
-      { includeContent: shouldForward }
+      { includeContent: true }
     )
     const subject = parsed.subject || message.headers.get('subject') || ''
     const code = extractCode(`${subject} ${parsed.bodyText}`)
@@ -122,9 +124,9 @@ export default {
           INSERT INTO attachments (
             id, email_id, filename, content_type, size_bytes,
             content_disposition, content_id, mime_part_index,
-            text_content, text_extraction_status, storage_key, created_at
+            text_content, text_extraction_status, storage_key, content_base64, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           attachment.id,
           attachment.email_id,
@@ -137,6 +139,7 @@ export default {
           attachment.text_content,
           attachment.text_extraction_status,
           attachment.storage_key,
+          attachment.content_base64,
           attachment.created_at
         )
       ),
@@ -263,6 +266,7 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
     text_content: string
     text_extraction_status: string
     storage_key: string | null
+    content_base64: string | null
     created_at: string
   }>()
 
@@ -273,9 +277,77 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
     has_attachments: Boolean(row.has_attachments),
     attachment_count: row.attachment_count ?? 0,
     attachments: attachments.results.map((attachment) => ({
-      ...attachment,
-      downloadable: Boolean(attachment.storage_key),
+      id: attachment.id,
+      email_id: attachment.email_id,
+      filename: attachment.filename,
+      content_type: attachment.content_type,
+      size_bytes: attachment.size_bytes,
+      content_disposition: attachment.content_disposition,
+      content_id: attachment.content_id,
+      mime_part_index: attachment.mime_part_index,
+      text_content: attachment.text_content,
+      text_extraction_status: attachment.text_extraction_status,
+      storage_key: attachment.storage_key,
+      created_at: attachment.created_at,
+      downloadable: Boolean(attachment.storage_key || attachment.content_base64),
     })),
+  })
+}
+
+async function handleGetAttachment(url: URL, env: Env): Promise<Response> {
+  const id = url.searchParams.get('id')
+  if (!id) return Response.json({ error: 'Missing ?id= parameter' }, { status: 400 })
+
+  const attachment = await env.DB.prepare('SELECT * FROM attachments WHERE id = ?').bind(id).first<{
+    id: string
+    email_id: string
+    filename: string
+    content_type: string
+    size_bytes: number | null
+    content_disposition: string | null
+    content_id: string | null
+    mime_part_index: number
+    text_content: string
+    text_extraction_status: string
+    storage_key: string | null
+    content_base64: string | null
+    created_at: string
+  }>()
+
+  if (!attachment) return Response.json({ error: 'Attachment not found' }, { status: 404 })
+
+  if (url.searchParams.get('format') === 'json') {
+    return Response.json({
+      id: attachment.id,
+      email_id: attachment.email_id,
+      filename: attachment.filename,
+      content_type: attachment.content_type,
+      size_bytes: attachment.size_bytes,
+      content_disposition: attachment.content_disposition,
+      content_id: attachment.content_id,
+      mime_part_index: attachment.mime_part_index,
+      text_content: attachment.text_content,
+      text_extraction_status: attachment.text_extraction_status,
+      storage_key: attachment.storage_key,
+      created_at: attachment.created_at,
+      downloadable: Boolean(attachment.storage_key || attachment.content_base64),
+    })
+  }
+
+  if (!attachment.content_base64) {
+    return Response.json({ error: 'Attachment content is not available' }, { status: 409 })
+  }
+
+  const content = decodeBase64(attachment.content_base64)
+  const body = new Uint8Array(content.byteLength)
+  body.set(content)
+
+  return new Response(body, {
+    headers: {
+      'Content-Type': attachment.content_type || 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${escapeHeaderValue(attachment.filename)}"`,
+      'Content-Length': String(content.byteLength),
+    },
   })
 }
 
@@ -291,6 +363,21 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+
+  return bytes
+}
+
+function escapeHeaderValue(value: string): string {
+  return value.replace(/["\r\n]/g, '_')
 }
 
 async function forwardEmail(email: Email, env: Env): Promise<void> {

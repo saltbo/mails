@@ -171,6 +171,11 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
       return rowToEmail(row, attachmentRows.map(rowToAttachment))
     },
 
+    async getAttachment(id) {
+      const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as Record<string, unknown> | null
+      return row ? rowToAttachment(row) : null
+    },
+
     async getCode(mailbox, options) {
       const timeout = (options?.timeout ?? 30) * 1000
       const since = options?.since
