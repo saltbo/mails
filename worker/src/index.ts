@@ -1,6 +1,6 @@
 import { extractCode } from './extract-code'
 import { parseIncomingEmail } from './mime'
-import type { Email } from '../../src/core/types.js'
+import type { Attachment, Email } from '../../src/core/types.js'
 
 export interface Env {
   DB: D1Database
@@ -8,7 +8,10 @@ export interface Env {
   FORWARD_TOKEN?: string
   FORWARD_TIMEOUT_MS?: string
   READ_TOKEN?: string
+  INLINE_ATTACHMENT_MAX_BYTES?: string
 }
+
+const DEFAULT_INLINE_ATTACHMENT_MAX_BYTES = 1_300_000
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -63,6 +66,10 @@ export default {
       now,
       { includeContent: true }
     )
+    const inlineAttachmentMaxBytes = readInlineAttachmentMaxBytes(env.INLINE_ATTACHMENT_MAX_BYTES)
+    const storedAttachments = parsed.attachments.map((attachment) =>
+      toStoredAttachment(attachment, inlineAttachmentMaxBytes)
+    )
     const subject = parsed.subject || message.headers.get('subject') || ''
     const code = extractCode(`${subject} ${parsed.bodyText}`)
     const fromName = parseFromName(message.headers.get('from') ?? from)
@@ -86,9 +93,13 @@ export default {
       attachment_names: parsed.attachmentNames,
       attachment_search_text: parsed.attachmentSearchText,
       raw_storage_key: null,
-      attachments: parsed.attachments,
+      attachments: storedAttachments,
       received_at: now,
       created_at: now,
+    }
+    const forwardedEmail: Email = {
+      ...emailRecord,
+      attachments: parsed.attachments,
     }
     const statements = [
       env.DB.prepare(`
@@ -149,7 +160,7 @@ export default {
     await env.DB.batch(statements)
 
     if (env.FORWARD_URL) {
-      await forwardEmail(emailRecord, env)
+      await forwardEmail(forwardedEmail, env)
     }
   },
 } satisfies ExportedHandler<Env>
@@ -165,6 +176,25 @@ function requireReadAuth(request: Request, env: Env): Response | null {
   }
 
   return Response.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+function toStoredAttachment(attachment: Attachment, maxInlineBytes: number): Attachment {
+  const sizeBytes = attachment.size_bytes ?? decodeBase64Size(attachment.content_base64)
+  if (!attachment.content_base64 || sizeBytes === null || sizeBytes <= maxInlineBytes) {
+    return attachment
+  }
+
+  return {
+    ...attachment,
+    content_base64: null,
+    downloadable: Boolean(attachment.storage_key),
+  }
+}
+
+function readInlineAttachmentMaxBytes(value: string | undefined): number {
+  if (!value) return DEFAULT_INLINE_ATTACHMENT_MAX_BYTES
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_INLINE_ATTACHMENT_MAX_BYTES
 }
 
 async function handleGetCode(url: URL, env: Env): Promise<Response> {
@@ -386,6 +416,14 @@ function decodeBase64(value: string): Uint8Array {
   }
 
   return bytes
+}
+
+function decodeBase64Size(value: string | null | undefined): number | null {
+  if (!value) return null
+
+  const normalized = value.replace(/\s+/g, '')
+  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0
+  return Math.floor((normalized.length * 3) / 4) - padding
 }
 
 function sanitizeAttachmentFilename(value: string): string {

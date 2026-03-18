@@ -154,6 +154,7 @@ Then configure Cloudflare Email Routing to forward to this worker.
 | `GET /health` | Health check |
 
 Set `READ_TOKEN` in the Worker environment if you want these read endpoints protected with `Authorization: Bearer <token>`.
+Set `INLINE_ATTACHMENT_MAX_BYTES` if you want to change how much attachment content the Worker keeps inline in D1 before falling back to metadata-only storage.
 
 ## Storage Providers
 
