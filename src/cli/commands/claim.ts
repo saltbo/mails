@@ -32,14 +32,15 @@ export async function claimCommand(args: string[]) {
     process.exit(1)
   }
 
-  const { session_id, device_code, url } = startData
+  const { session_id, device_code } = startData
+  const claimUrl = `${CLAIM_PAGE}?session=${session_id}&name=${encodeURIComponent(name)}`
 
   // 2. Show info and open browser
   console.log('')
   console.log(`  Claim: ${name}@mails.dev`)
   console.log(`  Code:  ${device_code}`)
   console.log('')
-  console.log(`  ${url}`)
+  console.log(`  ${claimUrl}`)
   console.log('')
   console.log(`  Or visit ${CLAIM_PAGE} and enter the code above.`)
   console.log('')
@@ -49,7 +50,7 @@ export async function claimCommand(args: string[]) {
     const { exec } = await import('child_process')
     const platform = process.platform
     const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open'
-    exec(`${cmd} "${url}"`)
+    exec(`${cmd} "${claimUrl}"`)
   } catch {}
 
   // 3. Poll for result
