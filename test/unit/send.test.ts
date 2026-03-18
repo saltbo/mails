@@ -1,9 +1,19 @@
-import { describe, expect, test, afterEach, mock } from 'bun:test'
+import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 import { send } from '../../src/core/send'
 import { setConfigValue, saveConfig, loadConfig } from '../../src/core/config'
 
 describe('send', () => {
   const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    saveConfig({
+      mode: 'hosted',
+      domain: 'mails.dev',
+      mailbox: '',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+    })
+  })
 
   afterEach(() => {
     globalThis.fetch = originalFetch

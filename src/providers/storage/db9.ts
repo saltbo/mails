@@ -1,5 +1,6 @@
 import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
+// Issue #1 fix: remove invalid GIN index, use generated column instead
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS emails (
   id TEXT PRIMARY KEY,
@@ -20,22 +21,17 @@ CREATE TABLE IF NOT EXISTS emails (
 );
 CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_emails_code ON emails(mailbox) WHERE code IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_emails_search_fts
-ON emails
-USING GIN (
-  setweight(to_tsvector('simple', coalesce(subject, '')), 'A') ||
-  setweight(to_tsvector('simple', coalesce(from_name, '')), 'B') ||
-  setweight(to_tsvector('simple', coalesce(body_text, '')), 'C') ||
-  setweight(to_tsvector('simple', coalesce(body_html, '')), 'D')
-);
 `
 
-const SEARCH_VECTOR = `
+// Issue #4 fix: single source of truth for search vector expression
+const SEARCH_VECTOR = `(
   setweight(to_tsvector('simple', coalesce(subject, '')), 'A') ||
   setweight(to_tsvector('simple', coalesce(from_name, '')), 'B') ||
-  setweight(to_tsvector('simple', coalesce(body_text, '')), 'C') ||
-  setweight(to_tsvector('simple', coalesce(body_html, '')), 'D')
-`
+  setweight(to_tsvector('simple', coalesce(body_text, '')), 'C')
+)`
+
+// Issue #3 fix: explicit column list instead of SELECT *
+const EMAIL_COLUMNS = 'id, mailbox, from_address, from_name, to_address, subject, body_text, body_html, code, headers, metadata, direction, status, received_at, created_at'
 
 interface Db9SqlColumn {
   name: string
@@ -54,7 +50,12 @@ function getColumnNames(columns: Array<string | Db9SqlColumn>): string[] {
 
 export function createDb9Provider(token: string, databaseId: string): StorageProvider {
   const baseUrl = 'https://api.db9.ai'
-  const esc = (s: string) => s.replace(/'/g, "''")
+
+  // Issue #2 fix: escape single quotes AND backslashes
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "''")
+
+  // Issue #6 fix: escape ILIKE wildcards
+  const escLike = (s: string) => esc(s).replace(/%/g, '\\%').replace(/_/g, '\\_')
 
   async function sql(query: string): Promise<Db9SqlResult> {
     const res = await fetch(`${baseUrl}/customer/databases/${databaseId}/sql`, {
@@ -124,7 +125,7 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
 
     async getEmails(mailbox, options) {
       const { limit, offset } = normalizeQueryOptions(options)
-      let query = `SELECT * FROM emails WHERE mailbox = '${esc(mailbox)}'`
+      let query = `SELECT ${EMAIL_COLUMNS} FROM emails WHERE mailbox = '${esc(mailbox)}'`
 
       if (options?.direction) {
         query += ` AND direction = '${esc(options.direction)}'`
@@ -141,30 +142,23 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
       const directionClause = options.direction
         ? `AND direction = '${esc(options.direction)}'`
         : ''
-      const query = esc(options.query)
-      const pattern = `%${query}%`
+      const queryText = esc(options.query)
+      const pattern = `%${escLike(options.query)}%`
 
       const result = await sql(`
-        WITH ranked AS (
-          SELECT
-            *,
-            ts_rank(
-              ${SEARCH_VECTOR},
-              websearch_to_tsquery('simple', '${query}')
-            ) AS rank
-          FROM emails
-          WHERE mailbox = '${esc(mailbox)}'
-            ${directionClause}
-            AND (
-              (${SEARCH_VECTOR}) @@ websearch_to_tsquery('simple', '${query}')
-              OR from_address ILIKE '${pattern}'
-              OR to_address ILIKE '${pattern}'
-              OR code ILIKE '${pattern}'
-            )
-        )
-        SELECT *
-        FROM ranked
-        ORDER BY rank DESC, received_at DESC
+        SELECT ${EMAIL_COLUMNS}
+        FROM emails
+        WHERE mailbox = '${esc(mailbox)}'
+          ${directionClause}
+          AND (
+            ${SEARCH_VECTOR} @@ websearch_to_tsquery('simple', '${queryText}')
+            OR from_address ILIKE '${pattern}' ESCAPE '\\\\'
+            OR to_address ILIKE '${pattern}' ESCAPE '\\\\'
+            OR code ILIKE '${pattern}' ESCAPE '\\\\'
+          )
+        ORDER BY
+          ts_rank(${SEARCH_VECTOR}, websearch_to_tsquery('simple', '${queryText}')) DESC,
+          received_at DESC
         LIMIT ${limit} OFFSET ${offset}
       `)
 
@@ -172,7 +166,7 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
     },
 
     async getEmail(id) {
-      const result = await sql(`SELECT * FROM emails WHERE id = '${esc(id)}' LIMIT 1`)
+      const result = await sql(`SELECT ${EMAIL_COLUMNS} FROM emails WHERE id = '${esc(id)}' LIMIT 1`)
       const emails = rowsToEmails(result)
       return emails[0] ?? null
     },

@@ -2,8 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
 import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { createSqliteProvider } from '../../src/providers/storage/sqlite'
-import { send } from '../../src/core/send'
-import { setConfigValue } from '../../src/core/config'
+import { createResendProvider } from '../../src/providers/send/resend'
 import type { Email } from '../../src/core/types'
 
 const TEST_DB = join(import.meta.dir, '..', '.e2e-mails.db')
@@ -22,11 +21,7 @@ describe('E2E: full email flow', () => {
     provider = createSqliteProvider(TEST_DB)
     await provider.init()
 
-    // Configure mails
-    setConfigValue('resend_api_key', 're_e2e_test')
-    setConfigValue('default_from', 'E2E Bot <bot@e2e.test>')
-    setConfigValue('mailbox', 'inbox@e2e.test')
-    setConfigValue('storage_provider', 'sqlite')
+    // No config dependency — use providers directly
   })
 
   afterAll(() => {
@@ -44,8 +39,10 @@ describe('E2E: full email flow', () => {
       return new Response(JSON.stringify({ id: 'e2e-msg-1' }))
     }) as typeof fetch
 
-    const result = await send({
-      to: 'user@example.com',
+    const resend = createResendProvider('re_e2e_test')
+    const result = await resend.send({
+      from: 'E2E Bot <bot@e2e.test>',
+      to: ['user@example.com'],
       subject: 'E2E Test Email',
       text: 'This is an E2E test',
     })

@@ -157,92 +157,43 @@ GET  /api/status          — 各项配置状态检查
 
 ## 阶段划分
 
-### Phase 1：核心 CLI + 发邮件 + skill.md（MVP）
+### Phase 1：核心 CLI + 发邮件 + skill.md（MVP） ✅
 
-目标：Agent 通过 skill.md 学会用 `mails` 发邮件
+- [x] 1.1 项目初始化
+- [x] 1.2 类型定义
+- [x] 1.3 配置系统
+- [x] 1.4 发邮件 Provider（Resend，零依赖 fetch）
+- [x] 1.5 CLI（send, config, help）
+- [x] 1.6 SDK 导出
+- [x] 1.7 skill.md
+- [x] 1.8 Bun 打包 + npm 发布（mails@1.0.1，受信任仓库 OIDC）
+- [x] 1.9 GitHub Actions（4 平台二进制 + GitHub Release）
 
-- [ ] 1.1 项目初始化
-  - package.json（name: mails, bin: mails）
-  - tsconfig.json, bunfig.toml, .gitignore
+### Phase 2：收邮件 Worker + 存储 ✅
 
-- [ ] 1.2 类型定义
-  - `src/core/types.ts` — Email, SendOptions, Config 等
-
-- [ ] 1.3 配置系统
-  - `src/core/config.ts` — 读写 `~/.mails/config.json`
-
-- [ ] 1.4 发邮件 Provider
-  - `src/providers/send/interface.ts` — SendProvider interface
-  - `src/providers/send/resend.ts` — Resend 实现
-  - `src/core/send.ts` — 统一发送入口
-
-- [ ] 1.5 CLI
-  - `src/cli/index.ts` — 命令路由
-  - `mails send` — 发邮件
-  - `mails config` — get/set 配置
-  - `mails help`
-
-- [ ] 1.6 SDK 导出
-  - `src/index.ts` — programmatic API（`import { send } from 'mails'`）
-
-- [ ] 1.7 skill.md
-  - Agent 接入指南：安装、配置、发邮件、收邮件 API
-
-- [ ] 1.8 Bun 打包 + npm 发布
-  - `bun build --compile`
-  - 发布 mails@1.0.0 到 npm
-
-### Phase 2：收邮件 Worker + 存储
-
-目标：部署 Worker 后，`mails inbox` / `mails code` 可用
-
-- [ ] 2.1 Cloudflare Email Worker
-  - 基于 sandbank mailbox 代码
-  - email() handler → MIME 解析 → 验证码提取 → 存储
-  - HTTP API：`/api/inbox`, `/api/code`, `/api/email/:id`
-
-- [ ] 2.2 Storage Provider
-  - `src/providers/storage/interface.ts`
-  - `src/providers/storage/sqlite.ts` — 本地默认
-  - `src/providers/storage/db9.ts` — db9.ai（兼容 PG schema）
-
-- [ ] 2.3 CLI 收件箱
-  - `mails inbox` / `mails code`
+- [x] 2.1 Cloudflare Email Worker（MIME 解析 + 验证码提取）
+- [x] 2.2 Storage Provider（SQLite bun:sqlite + db9.ai REST）
+- [x] 2.3 CLI 收件箱（inbox, code）
+- [x] 2.4 测试：100% 覆盖率（78 unit + 8 live E2E）
+- [x] 2.5 三语文档（README en/ja/zh）
 
 ### Phase 3：Setup + mails.dev
 
-目标：`mails setup` 打开配置向导；mails.dev 上线
-
-- [ ] 3.1 CLI setup 本地 API 服务器
+- [x] 3.1 mails.dev Landing Page — 已上线 https://mails.dev
+- [x] 3.2 mails.dev Email Worker（多租户）— 已部署，收件验证通过
+- [ ] 3.3 CLI setup 本地 API 服务器
   - `src/cli/setup-server.ts` — Bun.serve + CORS
   - `src/cli/commands/setup.ts` — 启动服务器 + 打开浏览器
+- [ ] 3.4 mails.dev/setup 配置页面（React + Tailwind，shipkey 模式）
+- [ ] 3.5 DNS 配置集成（Cloudflare API 一键 MX/SPF/DKIM/DMARC）
 
-- [ ] 3.2 mails.dev 仓库初始化
-  - ~/Codes/mails.dev 项目结构
-  - Landing page
-  - Setup 页面（React + Tailwind，参考 shipkey）
+### Phase 4：云服务 API (xxx@mails.dev)
 
-- [ ] 3.3 DNS 配置集成
-  - Cloudflare API 读写 DNS 记录
-  - MX, SPF, DKIM, DMARC 一键配置
-
-### Phase 4：多租户云服务 (xxx@mails.dev)
-
-目标：Agent 用 x402 付费使用 mails.dev 邮箱
-
-- [ ] 4.1 mails.dev Email Worker（多租户）
-  - 接收 *@mails.dev 邮件
-  - 按 to 地址分发到对应租户存储
-
-- [ ] 4.2 Cloud API
-  - Hono + x402 中间件
+- [ ] 4.1 Cloud API（Hono + x402）
   - `POST /v1/send` — 付费发邮件
   - `GET /v1/inbox` — 查询收件箱
   - `GET /v1/code` — 等待验证码
-
-- [ ] 4.3 部署
-  - api.mails.dev — Cloud API
-  - mails.dev — Landing + Setup
+- [ ] 4.2 部署 api.mails.dev
 
 ## 接口设计
 

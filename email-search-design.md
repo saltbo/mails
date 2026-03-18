@@ -296,7 +296,6 @@ WHERE mailbox = ?
   AND (
     subject LIKE ? COLLATE NOCASE
     OR body_text LIKE ? COLLATE NOCASE
-    OR body_html LIKE ? COLLATE NOCASE
     OR from_address LIKE ? COLLATE NOCASE
     OR from_name LIKE ? COLLATE NOCASE
     OR to_address LIKE ? COLLATE NOCASE

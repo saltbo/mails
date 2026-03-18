@@ -48,7 +48,7 @@ export async function inboxCommand(args: string[]) {
     process.exit(1)
   }
 
-  const limit = opts.limit ? parseInt(opts.limit) : 20
+  const limit = opts.limit ? (parseInt(opts.limit, 10) || 20) : 20
   const direction = opts.direction === 'inbound' || opts.direction === 'outbound'
     ? opts.direction
     : undefined

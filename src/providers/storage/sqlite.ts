@@ -89,7 +89,6 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
         AND (
           subject LIKE ? COLLATE NOCASE
           OR body_text LIKE ? COLLATE NOCASE
-          OR body_html LIKE ? COLLATE NOCASE
           OR from_address LIKE ? COLLATE NOCASE
           OR from_name LIKE ? COLLATE NOCASE
           OR to_address LIKE ? COLLATE NOCASE
@@ -99,7 +98,7 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
         LIMIT ? OFFSET ?
       `
 
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit, offset)
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, limit, offset)
 
       const rows = db.prepare(query).all(...params) as Record<string, string>[]
       return rows.map(rowToEmail)
