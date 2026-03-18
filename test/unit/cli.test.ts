@@ -114,6 +114,7 @@ describe('CLI: help command', () => {
     expect(output).toContain('send')
     expect(output).toContain('inbox')
     expect(output).toContain('code')
+    expect(output).toContain('serve')
     expect(output).toContain('config')
     expect(output).toContain('mails.dev')
   })

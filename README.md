@@ -11,6 +11,7 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 - **Send emails** via Resend (more providers coming)
 - **Receive emails** via Cloudflare Email Routing Worker
+- **Local-first inbound mode** — optional Worker forwarding into a keep-alive local process
 - **Verification code extraction** — auto-extracts codes from emails (EN/ZH/JA/KO)
 - **Storage providers** — local SQLite (default) or [db9.ai](https://db9.ai) cloud PostgreSQL
 - **Zero dependencies** — Resend provider uses raw `fetch()`, no SDK needed
@@ -55,6 +56,16 @@ mails inbox                           # List recent emails
 mails inbox --mailbox agent@test.com  # Specific mailbox
 mails inbox <id>                      # View email details
 ```
+
+### Local Inbound Server
+
+```bash
+mails serve
+mails serve --port 8787 --token YOUR_SHARED_SECRET
+```
+
+Then point your Worker forwarding target at `POST /api/inbound-email`. This mode is useful for keep-alive agents that want attachments persisted locally in SQLite or db9 instead of forcing Cloudflare blob storage.
+By default, the original attachment bytes are written to the local filesystem blob store.
 
 ### Verification Code
 
@@ -139,6 +150,7 @@ Then configure Cloudflare Email Routing to forward to this worker.
 ### SQLite (default)
 
 Local database at `~/.mails/mails.db`. Zero config.
+Inbound attachment forwarding can persist attachment metadata and inline attachment content here.
 
 ### db9.ai
 
@@ -159,10 +171,22 @@ mails config set db9_database_id YOUR_DB_ID
 | `mailbox` | | Your receiving address |
 | `send_provider` | `resend` | Send provider |
 | `storage_provider` | `sqlite` | `sqlite` or `db9` |
+| `attachment_blob_store` | `filesystem` | Attachment blob backend |
+| `attachment_blob_path` | `~/.mails/attachments` | Filesystem blob root |
 | `resend_api_key` | | Resend API key |
 | `default_from` | | Default sender address |
 | `db9_token` | | db9.ai API token |
 | `db9_database_id` | | db9.ai database ID |
+
+## Local-First Attachment Flow
+
+For users who do not want R2 or any Cloudflare object store in the loop:
+
+1. Run `mails serve` on a keep-alive machine or agent runtime.
+2. Configure your Cloudflare Email Worker with `FORWARD_URL` and optional `FORWARD_TOKEN`.
+3. The Worker keeps its own inbox metadata, but it can also POST full inbound emails plus attachments to your local process.
+4. Your configured storage provider (`sqlite` by default, or `db9`) persists attachment metadata.
+5. Original attachment bytes are stored by the configured blob store, which defaults to the local filesystem.
 
 ## Testing
 

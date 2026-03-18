@@ -12,6 +12,7 @@ const DEFAULT_CONFIG: MailsConfig = {
   mailbox: '',
   send_provider: 'resend',
   storage_provider: 'sqlite',
+  attachment_blob_store: 'filesystem',
 }
 
 function ensureDir() {

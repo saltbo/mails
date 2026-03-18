@@ -10,6 +10,7 @@ Commands:
   send          Send an email
   inbox         List received emails
   code          Wait for a verification code
+  serve         Run a local inbound HTTP server for forwarded emails
   config        View or modify configuration
   help          Show this help message
   version       Show version
@@ -30,6 +31,10 @@ Inbox:
   mails inbox                           List recent emails
   mails inbox --mailbox <address>       List emails for a specific mailbox
   mails inbox <id>                      Show email details
+
+Serve:
+  mails serve                           Run local inbound server on 127.0.0.1:8787
+  mails serve --port 8787 --token xxx   Protect the inbound endpoint with a bearer token
 
 Code:
   mails code --to <address>             Wait for a verification code

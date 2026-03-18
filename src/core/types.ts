@@ -32,6 +32,7 @@ export interface Attachment {
   text_content: string
   text_extraction_status: AttachmentTextExtractionStatus
   storage_key: string | null
+  content_base64?: string | null
   downloadable?: boolean
   created_at: string
 }
@@ -83,6 +84,8 @@ export interface MailsConfig {
   mailbox: string
   send_provider: string
   storage_provider: string
+  attachment_blob_store?: string
+  attachment_blob_path?: string
   resend_api_key?: string
   db9_token?: string
   db9_database_id?: string
@@ -120,4 +123,14 @@ export interface StorageProvider {
     timeout?: number
     since?: string
   }): Promise<{ code: string; from: string; subject: string } | null>
+}
+
+export interface AttachmentBlobStore {
+  name: string
+  put(key: string, content: Uint8Array, options?: {
+    contentType?: string
+    metadata?: Record<string, string>
+  }): Promise<void>
+  get(key: string): Promise<Uint8Array | null>
+  delete(key: string): Promise<void>
 }
