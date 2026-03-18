@@ -90,6 +90,7 @@ export interface MailsConfig {
   cloudflare_zone_id?: string
   worker_url?: string
   default_from?: string
+  api_key?: string
 }
 
 export interface SendProvider {

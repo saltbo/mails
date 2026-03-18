@@ -5,6 +5,7 @@ export { loadConfig, saveConfig, getConfigValue, setConfigValue } from './core/c
 export { createResendProvider } from './providers/send/resend.js'
 export { createSqliteProvider } from './providers/storage/sqlite.js'
 export { createDb9Provider } from './providers/storage/db9.js'
+export { createRemoteProvider } from './providers/storage/remote.js'
 
 export type {
   Attachment,
