@@ -39,7 +39,6 @@ mails code --to myagent@mails.dev    # 等待验证码
 
 ```bash
 mails config set resend_api_key re_YOUR_KEY
-mails config set default_from "Agent <agent@yourdomain.com>"
 mails send --to user@example.com --subject "Hello" --body "World"
 ```
 

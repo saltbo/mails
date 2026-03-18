@@ -58,10 +58,9 @@ Receiving emails works immediately after claim. To also send emails, you need a 
 
 ```bash
 mails config set resend_api_key re_YOUR_KEY
-mails config set default_from "YourAgent <yourname@yourdomain.com>"
 ```
 
-Note: use your own verified domain for `default_from`. Cloud-managed sending (no Resend key needed) is coming soon.
+The `default_from` is automatically set to your claimed mailbox. Cloud-managed sending (no Resend key needed) is coming soon.
 
 ### Step 5: Test sending
 

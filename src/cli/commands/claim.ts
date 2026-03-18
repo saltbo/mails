@@ -85,6 +85,7 @@ export async function claimCommand(args: string[]) {
 
       setConfigValue('mailbox', pollData.mailbox!)
       setConfigValue('api_key', pollData.api_key!)
+      setConfigValue('default_from', pollData.mailbox!)
 
       console.log(`  Claimed: ${pollData.mailbox}`)
       console.log(`  API Key: ${pollData.api_key}`)
