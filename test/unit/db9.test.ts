@@ -230,9 +230,9 @@ describe('db9 provider', () => {
   test('getEmails handles JSONB object headers', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({
-        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'direction', 'status', 'received_at', 'created_at'],
+        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'raw_storage_key', 'direction', 'status', 'received_at', 'created_at'],
         rows: [
-          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, { 'X-Custom': 'val' }, { key: 'value' }, 'inbound', 'received', '2025-01-01', '2025-01-01'],
+          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, { 'X-Custom': 'val' }, { key: 'value' }, null, false, 0, '', '', null, 'inbound', 'received', '2025-01-01', '2025-01-01'],
         ],
         row_count: 1,
       }))
@@ -242,5 +242,38 @@ describe('db9 provider', () => {
     const emails = await provider.getEmails('a@b.com')
     expect(emails[0]!.headers).toEqual({ 'X-Custom': 'val' })
     expect(emails[0]!.metadata).toEqual({ key: 'value' })
+  })
+
+  test('getEmail attaches attachment rows', async () => {
+    let count = 0
+    globalThis.fetch = mock(async () => {
+      count++
+
+      if (count === 1) {
+        return new Response(JSON.stringify({
+          columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'raw_storage_key', 'direction', 'status', 'received_at', 'created_at'],
+          rows: [
+            ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, '{}', '{}', null, true, 1, 'invoice.txt', 'invoice 42', null, 'inbound', 'received', '2025-01-01', '2025-01-01'],
+          ],
+          row_count: 1,
+        }))
+      }
+
+      return new Response(JSON.stringify({
+        columns: ['id', 'email_id', 'filename', 'content_type', 'size_bytes', 'content_disposition', 'content_id', 'mime_part_index', 'text_content', 'text_extraction_status', 'storage_key', 'content_base64', 'created_at'],
+        rows: [
+          ['att-1', 'e-1', 'invoice.txt', 'text/plain', 10, 'attachment', null, 0, 'invoice 42', 'done', 'e-1/att-1-invoice.txt', null, '2025-01-01'],
+        ],
+        row_count: 1,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const email = await provider.getEmail('e-1')
+    expect(email).not.toBeNull()
+    expect(email!.attachments).toHaveLength(1)
+    expect(email!.attachments![0]!.filename).toBe('invoice.txt')
+    expect(email!.attachments![0]!.storage_key).toBe('e-1/att-1-invoice.txt')
+    expect(email!.attachments![0]!.downloadable).toBe(true)
   })
 })

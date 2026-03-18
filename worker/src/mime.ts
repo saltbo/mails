@@ -24,12 +24,15 @@ export interface ParsedIncomingEmail {
 export async function parseIncomingEmail(
   raw: ArrayBuffer,
   emailId: string,
-  createdAt: string
+  createdAt: string,
+  options?: {
+    includeContent?: boolean
+  }
 ): Promise<ParsedIncomingEmail> {
   const parser = new PostalMime({ attachmentEncoding: 'arraybuffer' })
   const parsed = await parser.parse(raw)
   const attachments = parsed.attachments.map((attachment, index) =>
-    toAttachmentRecord(attachment, emailId, index, createdAt)
+    toAttachmentRecord(attachment, emailId, index, createdAt, options?.includeContent ?? false)
   )
 
   return {
@@ -52,7 +55,8 @@ function toAttachmentRecord(
   attachment: PostalMimeAttachment,
   emailId: string,
   mimePartIndex: number,
-  createdAt: string
+  createdAt: string,
+  includeContent: boolean
 ): Attachment {
   const filename = attachment.filename?.trim() || `attachment-${mimePartIndex + 1}`
   const sizeBytes = getAttachmentSize(attachment.content)
@@ -70,7 +74,8 @@ function toAttachmentRecord(
     text_content: text,
     text_extraction_status: status,
     storage_key: null,
-    downloadable: false,
+    content_base64: includeContent ? encodeAttachmentContent(attachment.content) : null,
+    downloadable: includeContent,
     created_at: createdAt,
   }
 }
@@ -138,4 +143,24 @@ function getAttachmentSize(content: PostalMimeAttachment['content']): number | n
   }
 
   return null
+}
+
+function encodeAttachmentContent(content: PostalMimeAttachment['content']): string | null {
+  let bytes: Uint8Array
+
+  if (typeof content === 'string') {
+    bytes = new TextEncoder().encode(content)
+  } else if (content instanceof Uint8Array) {
+    bytes = content
+  } else if (content instanceof ArrayBuffer) {
+    bytes = new Uint8Array(content)
+  } else {
+    return null
+  }
+
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
 }

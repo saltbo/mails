@@ -1,8 +1,12 @@
 import { extractCode } from './extract-code'
 import { parseIncomingEmail } from './mime'
+import type { Email } from '../../src/core/types.js'
 
 export interface Env {
   DB: D1Database
+  FORWARD_URL?: string
+  FORWARD_TOKEN?: string
+  FORWARD_TIMEOUT_MS?: string
 }
 
 export default {
@@ -49,10 +53,40 @@ export default {
     const from = message.from
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
+    const shouldForward = Boolean(env.FORWARD_URL)
+    const parsed = await parseIncomingEmail(
+      await new Response(message.raw).arrayBuffer(),
+      id,
+      now,
+      { includeContent: shouldForward }
+    )
     const subject = parsed.subject || message.headers.get('subject') || ''
     const code = extractCode(`${subject} ${parsed.bodyText}`)
     const fromName = parseFromName(message.headers.get('from') ?? from)
+    const emailRecord: Email = {
+      id,
+      mailbox: to,
+      from_address: from,
+      from_name: fromName,
+      to_address: to,
+      subject,
+      body_text: parsed.bodyText.slice(0, 50000),
+      body_html: parsed.bodyHtml.slice(0, 100000),
+      code,
+      headers: parsed.headers,
+      metadata: {},
+      direction: 'inbound',
+      status: 'received',
+      message_id: parsed.messageId,
+      has_attachments: parsed.attachmentCount > 0,
+      attachment_count: parsed.attachmentCount,
+      attachment_names: parsed.attachmentNames,
+      attachment_search_text: parsed.attachmentSearchText,
+      raw_storage_key: null,
+      attachments: parsed.attachments,
+      received_at: now,
+      created_at: now,
+    }
     const statements = [
       env.DB.prepare(`
         INSERT INTO emails (
@@ -63,27 +97,27 @@ export default {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
       `).bind(
-        id,
-        to,
-        from,
-        fromName,
-        to,
-        subject,
-        parsed.bodyText.slice(0, 50000),
-        parsed.bodyHtml.slice(0, 100000),
-        code,
-        JSON.stringify(parsed.headers),
+        emailRecord.id,
+        emailRecord.mailbox,
+        emailRecord.from_address,
+        emailRecord.from_name,
+        emailRecord.to_address,
+        emailRecord.subject,
+        emailRecord.body_text,
+        emailRecord.body_html,
+        emailRecord.code,
+        JSON.stringify(emailRecord.headers),
         JSON.stringify({}),
-        parsed.messageId,
-        parsed.attachmentCount > 0 ? 1 : 0,
-        parsed.attachmentCount,
-        parsed.attachmentNames,
-        parsed.attachmentSearchText,
+        emailRecord.message_id,
+        emailRecord.has_attachments ? 1 : 0,
+        emailRecord.attachment_count,
+        emailRecord.attachment_names,
+        emailRecord.attachment_search_text,
         null,
-        now,
-        now
+        emailRecord.received_at,
+        emailRecord.created_at
       ),
-      ...parsed.attachments.map((attachment) =>
+      ...(emailRecord.attachments ?? []).map((attachment) =>
         env.DB.prepare(`
           INSERT INTO attachments (
             id, email_id, filename, content_type, size_bytes,
@@ -109,6 +143,10 @@ export default {
     ]
 
     await env.DB.batch(statements)
+
+    if (env.FORWARD_URL) {
+      await forwardEmail(emailRecord, env)
+    }
   },
 } satisfies ExportedHandler<Env>
 
@@ -253,4 +291,38 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+async function forwardEmail(email: Email, env: Env): Promise<void> {
+  const controller = new AbortController()
+  const timeoutMs = readTimeout(env.FORWARD_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(env.FORWARD_URL!, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(env.FORWARD_TOKEN ? { 'Authorization': `Bearer ${env.FORWARD_TOKEN}` } : {}),
+      },
+      body: JSON.stringify(email),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      console.error(`Failed to forward inbound email ${email.id}: ${response.status} ${response.statusText}`)
+    }
+  } catch (error) {
+    console.error(`Failed to forward inbound email ${email.id}:`, error)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function readTimeout(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '', 10)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return 5000
 }

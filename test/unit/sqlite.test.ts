@@ -189,4 +189,39 @@ describe('SQLite provider', () => {
     expect(email!.headers).toEqual({ 'X-Custom': 'value' })
     expect(email!.metadata).toEqual({ source: 'test', count: 42 })
   })
+
+  test('persists attachments and inline attachment content', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'attachment-1',
+      attachments: [
+        {
+          id: 'att-1',
+          email_id: 'attachment-1',
+          filename: 'invoice.txt',
+          content_type: 'text/plain',
+          size_bytes: 12,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 0,
+          text_content: 'invoice 42',
+          text_extraction_status: 'done',
+          storage_key: 'attachment-1/att-1-invoice.txt',
+          content_base64: null,
+          created_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+    }))
+
+    const email = await provider.getEmail('attachment-1')
+    expect(email).not.toBeNull()
+    expect(email!.has_attachments).toBe(true)
+    expect(email!.attachment_count).toBe(1)
+    expect(email!.attachments).toHaveLength(1)
+    expect(email!.attachments![0]!.filename).toBe('invoice.txt')
+    expect(email!.attachments![0]!.storage_key).toBe('attachment-1/att-1-invoice.txt')
+    expect(email!.attachments![0]!.downloadable).toBe(true)
+  })
 })
