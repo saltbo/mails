@@ -3,6 +3,8 @@ import { parseIncomingEmail } from './mime'
 
 export interface Env {
   DB: D1Database
+  /** Optional auth token. If set, all /api/* endpoints require Authorization: Bearer <token>. */
+  AUTH_TOKEN?: string
 }
 
 export default {
@@ -20,21 +22,30 @@ export default {
 
     let response: Response
 
-    switch (url.pathname) {
-      case '/api/inbox':
-        response = await handleInbox(url, env)
-        break
-      case '/api/code':
-        response = await handleGetCode(url, env)
-        break
-      case '/api/email':
-        response = await handleGetEmail(url, env)
-        break
-      case '/health':
-        response = Response.json({ ok: true })
-        break
-      default:
-        response = Response.json({ name: 'mails-worker', version: '1.0.0' })
+    // /health is always public
+    if (url.pathname === '/health') {
+      response = Response.json({ ok: true })
+    } else if (url.pathname.startsWith('/api/')) {
+      // Check auth for /api/* if AUTH_TOKEN is configured
+      if (env.AUTH_TOKEN && !verifyToken(request, env.AUTH_TOKEN)) {
+        response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+      } else {
+        switch (url.pathname) {
+          case '/api/inbox':
+            response = await handleInbox(url, env)
+            break
+          case '/api/code':
+            response = await handleGetCode(url, env)
+            break
+          case '/api/email':
+            response = await handleGetEmail(url, env)
+            break
+          default:
+            response = Response.json({ error: 'Not found' }, { status: 404 })
+        }
+      }
+    } else {
+      response = Response.json({ name: 'mails-worker', version: '1.0.0' })
     }
 
     // Add CORS headers to all responses
@@ -265,4 +276,9 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+function verifyToken(request: Request, token: string): boolean {
+  const auth = request.headers.get('Authorization')
+  return auth === `Bearer ${token}`
 }

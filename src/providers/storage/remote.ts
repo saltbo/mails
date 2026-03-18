@@ -5,12 +5,14 @@ interface RemoteProviderOptions {
   url: string
   /** Mailbox address for query scoping */
   mailbox: string
-  /** API key (for mails.dev hosted service). If set, uses /v1/* authenticated endpoints. */
+  /** API key (for mails.dev hosted /v1/* endpoints). If set, uses /v1/* paths. */
   apiKey?: string
+  /** Auth token (api_key or worker_token). Sent as Bearer header. */
+  token?: string
 }
 
 export function createRemoteProvider(options: RemoteProviderOptions): StorageProvider {
-  const { url, mailbox, apiKey } = options
+  const { url, mailbox, apiKey, token } = options
   const useAuthApi = !!apiKey
 
   async function apiFetch(path: string, params?: Record<string, string | number>): Promise<Response> {
@@ -21,8 +23,8 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
       }
     }
     const headers: Record<string, string> = {}
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
     }
     return fetch(endpoint.toString(), { headers })
   }

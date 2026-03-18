@@ -89,6 +89,7 @@ export interface MailsConfig {
   cloudflare_api_token?: string
   cloudflare_zone_id?: string
   worker_url?: string
+  worker_token?: string
   default_from?: string
   api_key?: string
 }

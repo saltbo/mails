@@ -51,6 +51,7 @@ export async function getStorage(): Promise<StorageProvider> {
 function resolveRemoteProvider(config: {
   api_key?: string
   worker_url?: string
+  worker_token?: string
   mailbox?: string
 }): StorageProvider {
   const apiUrl = process.env.MAILS_API_URL
@@ -62,9 +63,14 @@ function resolveRemoteProvider(config: {
     throw new Error('mailbox not configured. Run: mails config set mailbox <address>')
   }
 
+  // Hosted mode: api_key authenticates to /v1/* endpoints
+  // Self-hosted: worker_token authenticates to /api/* endpoints
+  const token = config.api_key || config.worker_token
+
   return createRemoteProvider({
     url: apiUrl,
     mailbox,
     apiKey: config.api_key,
+    token,
   })
 }
