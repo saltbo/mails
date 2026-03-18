@@ -210,4 +210,4 @@ CREATE INDEX idx_emails_mailbox ON emails(mailbox, received_at DESC);
 
 - Website: https://mails.dev
 - npm: https://www.npmjs.com/package/mails
-- GitHub: https://github.com/user/mails
+- GitHub: https://github.com/chekusu/mails
