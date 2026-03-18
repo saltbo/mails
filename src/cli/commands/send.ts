@@ -1,26 +1,38 @@
 import { send } from '../../core/send.js'
 
-function parseArgs(args: string[]): Record<string, string> {
-  const result: Record<string, string> = {}
+interface ParsedArgs {
+  values: Record<string, string>
+  attachments: string[]
+}
+
+function parseArgs(args: string[]): ParsedArgs {
+  const values: Record<string, string> = {}
+  const attachments: string[] = []
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
     if (arg.startsWith('--')) {
       const key = arg.slice(2)
       const value = args[i + 1]
       if (value && !value.startsWith('--')) {
-        result[key] = value
+        if (key === 'attach') {
+          attachments.push(value)
+        } else {
+          values[key] = value
+        }
         i++
       }
     }
   }
-  return result
+
+  return { values, attachments }
 }
 
 export async function sendCommand(args: string[]) {
-  const opts = parseArgs(args)
+  const { values: opts, attachments } = parseArgs(args)
 
   if (!opts['to']) {
-    console.error('Usage: mails send --to <email> --subject <subject> --body <text> [--html <html>] [--from <from>] [--reply-to <email>]')
+    console.error('Usage: mails send --to <email> --subject <subject> --body <text> [--html <html>] [--from <from>] [--reply-to <email>] [--attach <path>]')
     process.exit(1)
   }
 
@@ -41,6 +53,7 @@ export async function sendCommand(args: string[]) {
     text: opts['body'],
     html: opts['html'],
     replyTo: opts['reply-to'],
+    attachments: attachments.map((path) => ({ path })),
   })
 
   console.log(`Sent via ${result.provider} (id: ${result.id})`)

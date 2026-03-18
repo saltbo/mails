@@ -1,6 +1,7 @@
 import type { SendOptions, SendProvider, SendResult } from './types.js'
 import { loadConfig } from './config.js'
 import { createResendProvider } from '../providers/send/resend.js'
+import { prepareSendAttachments } from './send-attachments.js'
 
 function resolveProvider(): SendProvider {
   const config = loadConfig()
@@ -32,6 +33,8 @@ export async function send(options: SendOptions): Promise<SendResult> {
     throw new Error('Either text or html body is required')
   }
 
+  const attachments = await prepareSendAttachments(options.attachments)
+
   return provider.send({
     from,
     to,
@@ -39,5 +42,7 @@ export async function send(options: SendOptions): Promise<SendResult> {
     text: options.text,
     html: options.html,
     replyTo: options.replyTo,
+    headers: options.headers,
+    attachments,
   })
 }

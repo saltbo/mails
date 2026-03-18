@@ -1,3 +1,41 @@
+export interface SendAttachment {
+  filename?: string
+  content?: string | ArrayBuffer | Uint8Array
+  path?: string
+  contentType?: string
+  contentId?: string
+}
+
+export interface PreparedAttachment {
+  filename: string
+  content: string
+  contentType?: string
+  contentId?: string
+}
+
+export type AttachmentTextExtractionStatus =
+  | 'pending'
+  | 'done'
+  | 'unsupported'
+  | 'failed'
+  | 'too_large'
+
+export interface Attachment {
+  id: string
+  email_id: string
+  filename: string
+  content_type: string
+  size_bytes: number | null
+  content_disposition: string | null
+  content_id: string | null
+  mime_part_index: number
+  text_content: string
+  text_extraction_status: AttachmentTextExtractionStatus
+  storage_key: string | null
+  downloadable?: boolean
+  created_at: string
+}
+
 export interface Email {
   id: string
   mailbox: string
@@ -12,6 +50,13 @@ export interface Email {
   metadata: Record<string, unknown>
   direction: 'inbound' | 'outbound'
   status: 'received' | 'sent' | 'failed' | 'queued'
+  message_id?: string | null
+  has_attachments?: boolean
+  attachment_count?: number
+  attachment_names?: string
+  attachment_search_text?: string
+  raw_storage_key?: string | null
+  attachments?: Attachment[]
   received_at: string
   created_at: string
 }
@@ -23,6 +68,8 @@ export interface SendOptions {
   text?: string
   html?: string
   replyTo?: string
+  headers?: Record<string, string>
+  attachments?: SendAttachment[]
 }
 
 export interface SendResult {
@@ -54,6 +101,8 @@ export interface SendProvider {
     text?: string
     html?: string
     replyTo?: string
+    headers?: Record<string, string>
+    attachments?: PreparedAttachment[]
   }): Promise<SendResult>
 }
 

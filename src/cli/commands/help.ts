@@ -24,6 +24,7 @@ Send:
   mails send --to <email> --subject <subject> --body <text>
   mails send --to <email> --subject <subject> --html <html>
   mails send --from "Name <email>" --to <email> --subject <subject> --body <text>
+  mails send --to <email> --subject <subject> --body <text> --attach ./invoice.pdf
 
 Inbox:
   mails inbox                           List recent emails

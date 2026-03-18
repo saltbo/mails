@@ -7,7 +7,11 @@ export { createSqliteProvider } from './providers/storage/sqlite.js'
 export { createDb9Provider } from './providers/storage/db9.js'
 
 export type {
+  Attachment,
+  AttachmentTextExtractionStatus,
   Email,
+  PreparedAttachment,
+  SendAttachment,
   SendOptions,
   SendResult,
   SendProvider,

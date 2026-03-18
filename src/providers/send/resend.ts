@@ -23,6 +23,17 @@ export function createResendProvider(apiKey: string): SendProvider {
       if (options.text) body.text = options.text
       if (options.html) body.html = options.html
       if (options.replyTo) body.reply_to = options.replyTo
+      if (options.headers && Object.keys(options.headers).length > 0) {
+        body.headers = options.headers
+      }
+      if (options.attachments?.length) {
+        body.attachments = options.attachments.map((attachment) => ({
+          filename: attachment.filename,
+          content: attachment.content,
+          ...(attachment.contentType ? { content_type: attachment.contentType } : {}),
+          ...(attachment.contentId ? { content_id: attachment.contentId } : {}),
+        }))
+      }
 
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
