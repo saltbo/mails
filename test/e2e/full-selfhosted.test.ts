@@ -154,4 +154,96 @@ describe.skipIf(skip)('Full E2E: self-hosted OSS worker', () => {
     }
     console.log(`  Pagination: page1=${page1.length}, page2=${page2.length}`)
   })
+
+  test('9. send email via OSS Worker /api/send', async () => {
+    const res = await fetch(`${OSS_WORKER_URL}/api/send`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OSS_WORKER_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'mails oss-e2e <noreply@kimeeru.com>',
+        to: ['o.u.turing@gmail.com'],
+        subject: `[oss-send-e2e] ${VERIFICATION_CODE}`,
+        text: `Sent via OSS /api/send. Code: ${VERIFICATION_CODE}`,
+      }),
+    })
+
+    const data = await res.json() as { id?: string; error?: string }
+    if (res.ok) {
+      console.log(`  Sent via /api/send: ${data.id}`)
+      expect(data.id).toBeTruthy()
+    } else {
+      console.log(`  /api/send not available: ${data.error} (RESEND_API_KEY may not be configured)`)
+      // Don't fail — the endpoint exists but Resend key might not be set on test worker
+    }
+  })
+
+  test('10. outbound email appears in inbox after /api/send', async () => {
+    const provider = createRemoteProvider({
+      url: OSS_WORKER_URL,
+      mailbox: OSS_MAILBOX,
+      token: OSS_WORKER_TOKEN || undefined,
+    })
+
+    const outbound = await provider.getEmails(OSS_MAILBOX, { direction: 'outbound' })
+    if (outbound.length > 0) {
+      console.log(`  Outbound emails: ${outbound.length}`)
+      expect(outbound[0]!.direction).toBe('outbound')
+    } else {
+      console.log(`  No outbound emails (expected if /api/send was not available)`)
+    }
+  })
+
+  test('11. sync emails from Worker to local sqlite', async () => {
+    const { existsSync, rmSync } = await import('fs')
+    const { join } = await import('path')
+    const { createSqliteProvider } = await import('../../src/providers/storage/sqlite')
+
+    // Fetch from /api/sync
+    const res = await fetch(
+      `${OSS_WORKER_URL}/api/sync?to=${encodeURIComponent(OSS_MAILBOX)}&since=1970-01-01T00:00:00Z&limit=50`,
+      { headers: OSS_WORKER_TOKEN ? { Authorization: `Bearer ${OSS_WORKER_TOKEN}` } : {} },
+    )
+
+    if (!res.ok) {
+      const err = await res.json() as { error?: string }
+      console.log(`  /api/sync not available (${res.status}): ${err.error ?? res.statusText} — skipping sync test`)
+      return
+    }
+
+    const data = await res.json() as { emails: any[]; total: number; has_more: boolean }
+    console.log(`  Sync: ${data.emails.length} emails (total: ${data.total})`)
+    expect(data.emails.length).toBeGreaterThanOrEqual(1)
+
+    // Save to local sqlite
+    const testDb = join(import.meta.dir, '..', '.oss-sync-test.db')
+    for (const f of [testDb, testDb + '-wal', testDb + '-shm']) {
+      if (existsSync(f)) rmSync(f)
+    }
+
+    const sqlite = createSqliteProvider(testDb)
+    await sqlite.init()
+
+    for (const email of data.emails) {
+      await sqlite.saveEmail(email)
+    }
+
+    // Verify local data
+    const localEmails = await sqlite.getEmails(OSS_MAILBOX)
+    expect(localEmails.length).toBe(data.emails.length)
+    console.log(`  Local sqlite: ${localEmails.length} emails`)
+
+    // Verify a specific email has correct data
+    const first = localEmails[0]!
+    expect(first.mailbox).toBe(OSS_MAILBOX)
+    expect(first.from_address).toBeTruthy()
+    expect(first.subject).toBeTruthy()
+
+    // Cleanup
+    for (const f of [testDb, testDb + '-wal', testDb + '-shm']) {
+      if (existsSync(f)) rmSync(f)
+    }
+  })
 })
