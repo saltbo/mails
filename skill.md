@@ -130,9 +130,27 @@ Uses `default_from` from config if `--from` is not specified. Requires `resend_a
 ```bash
 mails inbox                                  # List recent emails
 mails inbox --mailbox addr@mails.dev         # Specify mailbox
-mails inbox --query "password reset"         # Search emails
+mails inbox --query "password reset"         # Full-text search (ranked by relevance)
 mails inbox --query "invoice" --direction inbound --limit 10
+mails inbox --direction outbound             # View sent email history
 mails inbox <email-id>                       # Show full email details (with attachments)
+
+# Advanced filters (mails.dev hosted / db9)
+mails inbox --has-attachments                # Only emails with attachments
+mails inbox --attachment-type pdf            # Filter by attachment type
+mails inbox --from github.com               # Filter by sender
+mails inbox --since 2026-03-01 --until 2026-03-20  # Time range
+mails inbox --header "X-Mailer:sendgrid"    # Filter by email header
+
+# Combine any filters
+mails inbox --from github.com --has-attachments --since 2026-03-13
+mails inbox --query "deploy" --attachment-type log --direction inbound
+```
+
+### stats
+
+```bash
+mails stats senders                          # Top senders by frequency
 ```
 
 ### code
@@ -219,11 +237,19 @@ await send({
 // List inbox
 const emails = await getInbox('myagent@mails.dev', { limit: 10 })
 
-// Search inbox
+// Search inbox (full-text search with relevance ranking)
 const results = await searchInbox('myagent@mails.dev', {
   query: 'password reset',
   direction: 'inbound',
   limit: 5,
+})
+
+// Advanced filters (mails.dev hosted / db9)
+const pdfs = await getInbox('myagent@mails.dev', {
+  has_attachments: true,
+  attachment_type: 'pdf',
+  from: 'github.com',
+  since: '2026-03-01',
 })
 
 // Wait for verification code
@@ -269,17 +295,37 @@ curl -X POST -H "Authorization: Bearer mk_YOUR_API_KEY" \
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/inbox"
 
-# Search inbox
+# Search inbox (full-text search with relevance ranking)
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/inbox?query=password+reset&direction=inbound"
+
+# Advanced filters (all combinable)
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/inbox?has_attachments=true&attachment_type=pdf"
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/inbox?from=github.com&since=2026-03-01&until=2026-03-20"
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/inbox?header=X-Mailer:sendgrid"
+
+# View sent email history
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/inbox?direction=outbound"
+
+# Sender frequency stats
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/stats/senders"
 
 # Wait for verification code
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/code?timeout=30"
 
-# Get email detail
+# Get email detail (includes attachments)
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/email?id=EMAIL_ID"
+
+# Download attachment
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/attachment?id=ATTACHMENT_ID" -o file.pdf
 ```
 
 ### Self-hosted endpoints (your Worker, optional AUTH_TOKEN)
