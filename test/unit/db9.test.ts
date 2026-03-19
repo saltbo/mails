@@ -1,6 +1,6 @@
 import { describe, expect, test, afterEach, mock } from 'bun:test'
 import { createDb9Provider } from '../../src/providers/storage/db9'
-import type { Email } from '../../src/core/types'
+import type { Email, Attachment } from '../../src/core/types'
 
 function makeEmail(overrides: Partial<Email> = {}): Email {
   return {
@@ -112,13 +112,18 @@ describe('db9 provider', () => {
           { name: 'code', type: 'text' },
           { name: 'headers', type: 'jsonb' },
           { name: 'metadata', type: 'jsonb' },
+          { name: 'message_id', type: 'text' },
+          { name: 'has_attachments', type: 'bool' },
+          { name: 'attachment_count', type: 'int4' },
+          { name: 'attachment_names', type: 'text' },
+          { name: 'attachment_search_text', type: 'text' },
           { name: 'direction', type: 'text' },
           { name: 'status', type: 'text' },
           { name: 'received_at', type: 'timestamptz' },
           { name: 'created_at', type: 'timestamptz' },
         ],
         rows: [
-          ['e-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Hi', 'Hello', '', null, '{}', '{}', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
+          ['e-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Hi', 'Hello', '', null, '{}', '{}', null, false, 0, '', '', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
         ],
         row_count: 1,
       }))
@@ -146,20 +151,27 @@ describe('db9 provider', () => {
   })
 
   test('getEmail returns single email', async () => {
+    let callCount = 0
     globalThis.fetch = mock(async () => {
-      return new Response(JSON.stringify({
-        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'direction', 'status', 'received_at', 'created_at'],
-        rows: [
-          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, '{}', '{}', 'inbound', 'received', '2025-01-01', '2025-01-01'],
-        ],
-        row_count: 1,
-      }))
+      callCount++
+      if (callCount === 1) {
+        return new Response(JSON.stringify({
+          columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'direction', 'status', 'received_at', 'created_at'],
+          rows: [
+            ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, '{}', '{}', null, false, 0, '', '', 'inbound', 'received', '2025-01-01', '2025-01-01'],
+          ],
+          row_count: 1,
+        }))
+      }
+      // Second call: attachments query
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 0 }))
     }) as typeof fetch
 
     const provider = createDb9Provider('token', 'db-123')
     const email = await provider.getEmail('e-1')
     expect(email).not.toBeNull()
     expect(email!.id).toBe('e-1')
+    expect(email!.attachments).toEqual([])
   })
 
   test('getEmail returns null when not found', async () => {
@@ -210,13 +222,18 @@ describe('db9 provider', () => {
           { name: 'code', type: 'text' },
           { name: 'headers', type: 'jsonb' },
           { name: 'metadata', type: 'jsonb' },
+          { name: 'message_id', type: 'text' },
+          { name: 'has_attachments', type: 'bool' },
+          { name: 'attachment_count', type: 'int4' },
+          { name: 'attachment_names', type: 'text' },
+          { name: 'attachment_search_text', type: 'text' },
           { name: 'direction', type: 'text' },
           { name: 'status', type: 'text' },
           { name: 'received_at', type: 'timestamptz' },
           { name: 'created_at', type: 'timestamptz' },
         ],
         rows: [
-          ['search-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Reset password', 'Hello', '', '123456', '{}', '{}', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
+          ['search-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Reset password', 'Hello', '', '123456', '{}', '{}', null, false, 0, '', '', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
         ],
         row_count: 1,
       }))
@@ -308,9 +325,9 @@ describe('db9 provider', () => {
   test('getEmails handles JSONB object headers', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({
-        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'direction', 'status', 'received_at', 'created_at'],
+        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'direction', 'status', 'received_at', 'created_at'],
         rows: [
-          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, { 'X-Custom': 'val' }, { key: 'value' }, 'inbound', 'received', '2025-01-01', '2025-01-01'],
+          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, { 'X-Custom': 'val' }, { key: 'value' }, null, false, 0, '', '', 'inbound', 'received', '2025-01-01', '2025-01-01'],
         ],
         row_count: 1,
       }))
@@ -320,5 +337,191 @@ describe('db9 provider', () => {
     const emails = await provider.getEmails('a@b.com')
     expect(emails[0]!.headers).toEqual({ 'X-Custom': 'val' })
     expect(emails[0]!.metadata).toEqual({ key: 'value' })
+  })
+
+  test('saveEmail includes attachment metadata columns in SQL', async () => {
+    const queries: string[] = []
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      queries.push(body.query)
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 1 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.saveEmail(makeEmail({
+      message_id: '<abc@example.com>',
+      has_attachments: true,
+      attachment_count: 2,
+      attachments: [
+        {
+          id: 'att-1', email_id: 'test-1', filename: 'file.txt', content_type: 'text/plain',
+          size_bytes: 100, content_disposition: 'attachment', content_id: null,
+          mime_part_index: 0, text_content: 'hello world', text_extraction_status: 'done',
+          storage_key: null, created_at: '2025-01-01T00:00:00Z',
+        },
+        {
+          id: 'att-2', email_id: 'test-1', filename: 'image.png', content_type: 'image/png',
+          size_bytes: 5000, content_disposition: 'attachment', content_id: null,
+          mime_part_index: 1, text_content: '', text_extraction_status: 'unsupported',
+          storage_key: null, created_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+    }))
+    const emailInsert = queries[0]!
+    expect(emailInsert).toContain('has_attachments')
+    expect(emailInsert).toContain('attachment_count')
+    expect(emailInsert).toContain('attachment_names')
+    expect(emailInsert).toContain('attachment_search_text')
+    expect(emailInsert).toContain('message_id')
+    expect(emailInsert).toContain('true')
+    expect(emailInsert).toContain('file.txt, image.png')
+    expect(emailInsert).toContain('hello world')
+  })
+
+  test('saveEmail inserts attachments into attachments table', async () => {
+    const queries: string[] = []
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      queries.push(body.query)
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 1 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.saveEmail(makeEmail({
+      attachments: [
+        {
+          id: 'att-1', email_id: 'test-1', filename: 'report.pdf', content_type: 'application/pdf',
+          size_bytes: 2048, content_disposition: 'attachment', content_id: null,
+          mime_part_index: 0, text_content: 'extracted text', text_extraction_status: 'done',
+          storage_key: 'key-123', created_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+    }))
+
+    expect(queries).toHaveLength(2)
+    expect(queries[0]!).toContain('INSERT INTO emails')
+    expect(queries[1]!).toContain('INSERT INTO attachments')
+    expect(queries[1]!).toContain('att-1')
+    expect(queries[1]!).toContain('report.pdf')
+    expect(queries[1]!).toContain('application/pdf')
+    expect(queries[1]!).toContain('2048')
+    expect(queries[1]!).toContain('extracted text')
+    expect(queries[1]!).toContain('key-123')
+  })
+
+  test('saveEmail does not insert attachments when none provided', async () => {
+    const queries: string[] = []
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      queries.push(body.query)
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 1 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.saveEmail(makeEmail())
+
+    expect(queries).toHaveLength(1)
+    expect(queries[0]!).toContain('INSERT INTO emails')
+  })
+
+  test('getEmail fetches attachments from attachments table', async () => {
+    let callCount = 0
+    globalThis.fetch = mock(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(JSON.stringify({
+          columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'direction', 'status', 'received_at', 'created_at'],
+          rows: [
+            ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, '{}', '{}', null, true, 1, 'doc.pdf', '', 'inbound', 'received', '2025-01-01', '2025-01-01'],
+          ],
+          row_count: 1,
+        }))
+      }
+      // Second call: attachments
+      return new Response(JSON.stringify({
+        columns: ['id', 'email_id', 'filename', 'content_type', 'size_bytes', 'content_disposition', 'content_id', 'mime_part_index', 'text_content', 'text_extraction_status', 'storage_key', 'created_at'],
+        rows: [
+          ['att-1', 'e-1', 'doc.pdf', 'application/pdf', 1024, 'attachment', null, 0, 'pdf text', 'done', null, '2025-01-01'],
+        ],
+        row_count: 1,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const email = await provider.getEmail('e-1')
+    expect(email).not.toBeNull()
+    expect(email!.attachments).toHaveLength(1)
+    expect(email!.attachments![0]!.id).toBe('att-1')
+    expect(email!.attachments![0]!.filename).toBe('doc.pdf')
+    expect(email!.attachments![0]!.content_type).toBe('application/pdf')
+    expect(email!.attachments![0]!.size_bytes).toBe(1024)
+    expect(email!.attachments![0]!.text_content).toBe('pdf text')
+    expect(email!.attachments![0]!.text_extraction_status).toBe('done')
+    expect(email!.attachments![0]!.mime_part_index).toBe(0)
+  })
+
+  test('getEmails returns has_attachments and attachment_count', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'message_id', 'has_attachments', 'attachment_count', 'attachment_names', 'attachment_search_text', 'direction', 'status', 'received_at', 'created_at'],
+        rows: [
+          ['e-1', 'a@b.com', 's@x.com', '', 'a@b.com', 'Sub', 'Body', '', null, '{}', '{}', null, true, 2, 'a.pdf, b.txt', 'some text', 'inbound', 'received', '2025-01-01', '2025-01-01'],
+        ],
+        row_count: 1,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const emails = await provider.getEmails('a@b.com')
+    expect(emails).toHaveLength(1)
+    expect(emails[0]!.has_attachments).toBe(true)
+    expect(emails[0]!.attachment_count).toBe(2)
+    expect(emails[0]!.attachment_names).toBe('a.pdf, b.txt')
+    expect(emails[0]!.attachment_search_text).toBe('some text')
+  })
+
+  test('EMAIL_COLUMNS includes attachment metadata fields', async () => {
+    // Verify by checking that getEmails SELECT query includes the new column names
+    let executedQuery = ''
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      executedQuery = body.query
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 0 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.getEmails('a@b.com')
+    expect(executedQuery).toContain('message_id')
+    expect(executedQuery).toContain('has_attachments')
+    expect(executedQuery).toContain('attachment_count')
+    expect(executedQuery).toContain('attachment_names')
+    expect(executedQuery).toContain('attachment_search_text')
+  })
+
+  test('init creates attachments table', async () => {
+    let executedQuery = ''
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      executedQuery = body.query
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 0 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.init()
+    expect(executedQuery).toContain('CREATE TABLE IF NOT EXISTS attachments')
+    expect(executedQuery).toContain('idx_attachments_email_id')
+  })
+
+  test('SEARCH_VECTOR includes attachment_search_text', async () => {
+    let executedQuery = ''
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      executedQuery = body.query
+      return new Response(JSON.stringify({ columns: [], rows: [], row_count: 0 }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.searchEmails('a@b.com', { query: 'test' })
+    expect(executedQuery).toContain("coalesce(attachment_search_text, '')")
   })
 })

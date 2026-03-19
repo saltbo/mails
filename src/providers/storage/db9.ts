@@ -14,24 +14,45 @@ CREATE TABLE IF NOT EXISTS emails (
   code TEXT,
   headers JSONB DEFAULT '{}',
   metadata JSONB DEFAULT '{}',
+  message_id TEXT,
+  has_attachments BOOLEAN NOT NULL DEFAULT false,
+  attachment_count INTEGER NOT NULL DEFAULT 0,
+  attachment_names TEXT DEFAULT '',
+  attachment_search_text TEXT DEFAULT '',
   direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
   status TEXT DEFAULT 'received' CHECK (status IN ('received', 'sent', 'failed', 'queued')),
   received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  email_id TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size_bytes INTEGER,
+  content_disposition TEXT,
+  content_id TEXT,
+  mime_part_index INTEGER NOT NULL,
+  text_content TEXT DEFAULT '',
+  text_extraction_status TEXT NOT NULL DEFAULT 'pending',
+  storage_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_emails_code ON emails(mailbox) WHERE code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_attachments_email_id ON attachments(email_id);
 `
 
 // Issue #4 fix: single source of truth for search vector expression
 const SEARCH_VECTOR = `(
   setweight(to_tsvector('simple', coalesce(subject, '')), 'A') ||
   setweight(to_tsvector('simple', coalesce(from_name, '')), 'B') ||
-  setweight(to_tsvector('simple', coalesce(body_text, '')), 'C')
+  setweight(to_tsvector('simple', coalesce(body_text, '')), 'C') ||
+  setweight(to_tsvector('simple', coalesce(attachment_search_text, '')), 'C')
 )`
 
 // Issue #3 fix: explicit column list instead of SELECT *
-const EMAIL_COLUMNS = 'id, mailbox, from_address, from_name, to_address, subject, body_text, body_html, code, headers, metadata, direction, status, received_at, created_at'
+const EMAIL_COLUMNS = 'id, mailbox, from_address, from_name, to_address, subject, body_text, body_html, code, headers, metadata, message_id, has_attachments, attachment_count, attachment_names, attachment_search_text, direction, status, received_at, created_at'
 
 interface Db9SqlColumn {
   name: string
@@ -90,6 +111,11 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
         code: (obj.code as string) ?? null,
         headers: typeof obj.headers === 'string' ? JSON.parse(obj.headers) : (obj.headers as Record<string, string>) ?? {},
         metadata: typeof obj.metadata === 'string' ? JSON.parse(obj.metadata) : (obj.metadata as Record<string, unknown>) ?? {},
+        message_id: (obj.message_id as string) ?? null,
+        has_attachments: obj.has_attachments === true || obj.has_attachments === 't' || obj.has_attachments === 'true',
+        attachment_count: Number(obj.attachment_count) || 0,
+        attachment_names: (obj.attachment_names as string) ?? '',
+        attachment_search_text: (obj.attachment_search_text as string) ?? '',
         direction: obj.direction as Email['direction'],
         status: obj.status as Email['status'],
         received_at: obj.received_at as string,
@@ -106,21 +132,54 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
     },
 
     async saveEmail(email: Email) {
+      const attachments = email.attachments ?? []
+      const hasAttachments = attachments.length > 0
+      const attachmentCount = attachments.length
+      const attachmentNames = hasAttachments ? attachments.map(a => a.filename).join(', ') : ''
+      const attachmentSearchText = hasAttachments ? attachments.map(a => a.text_content || '').join(' ').trim() : ''
+
       await sql(`
-        INSERT INTO emails (id, mailbox, from_address, from_name, to_address, subject, body_text, body_html, code, headers, metadata, direction, status, received_at, created_at)
+        INSERT INTO emails (id, mailbox, from_address, from_name, to_address, subject, body_text, body_html, code, headers, metadata, message_id, has_attachments, attachment_count, attachment_names, attachment_search_text, direction, status, received_at, created_at)
         VALUES (
           '${esc(email.id)}', '${esc(email.mailbox)}', '${esc(email.from_address)}', '${esc(email.from_name)}',
           '${esc(email.to_address)}', '${esc(email.subject)}', '${esc(email.body_text)}', '${esc(email.body_html)}',
           ${email.code ? `'${esc(email.code)}'` : 'NULL'},
           '${esc(JSON.stringify(email.headers))}'::jsonb,
           '${esc(JSON.stringify(email.metadata))}'::jsonb,
+          ${email.message_id ? `'${esc(email.message_id)}'` : 'NULL'},
+          ${hasAttachments}, ${attachmentCount},
+          '${esc(attachmentNames)}', '${esc(attachmentSearchText)}',
           '${esc(email.direction)}', '${esc(email.status)}',
           '${esc(email.received_at)}', '${esc(email.created_at)}'
         )
         ON CONFLICT (id) DO UPDATE SET
           status = EXCLUDED.status,
-          metadata = EXCLUDED.metadata
+          metadata = EXCLUDED.metadata,
+          has_attachments = EXCLUDED.has_attachments,
+          attachment_count = EXCLUDED.attachment_count,
+          attachment_names = EXCLUDED.attachment_names,
+          attachment_search_text = EXCLUDED.attachment_search_text
       `)
+
+      if (attachments.length > 0) {
+        const values = attachments.map(a => `(
+          '${esc(a.id)}', '${esc(a.email_id)}', '${esc(a.filename)}', '${esc(a.content_type)}',
+          ${a.size_bytes !== null && a.size_bytes !== undefined ? a.size_bytes : 'NULL'},
+          ${a.content_disposition ? `'${esc(a.content_disposition)}'` : 'NULL'},
+          ${a.content_id ? `'${esc(a.content_id)}'` : 'NULL'},
+          ${a.mime_part_index},
+          '${esc(a.text_content ?? '')}',
+          '${esc(a.text_extraction_status ?? 'pending')}',
+          ${a.storage_key ? `'${esc(a.storage_key)}'` : 'NULL'},
+          '${esc(a.created_at)}'
+        )`).join(',\n')
+
+        await sql(`
+          INSERT INTO attachments (id, email_id, filename, content_type, size_bytes, content_disposition, content_id, mime_part_index, text_content, text_extraction_status, storage_key, created_at)
+          VALUES ${values}
+          ON CONFLICT (id) DO NOTHING
+        `)
+      }
     },
 
     async getEmails(mailbox, options) {
@@ -168,7 +227,35 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
     async getEmail(id) {
       const result = await sql(`SELECT ${EMAIL_COLUMNS} FROM emails WHERE id = '${esc(id)}' LIMIT 1`)
       const emails = rowsToEmails(result)
-      return emails[0] ?? null
+      const email = emails[0] ?? null
+      if (!email) return null
+
+      const attResult = await sql(`SELECT * FROM attachments WHERE email_id = '${esc(id)}' ORDER BY mime_part_index ASC`)
+      if (attResult.row_count > 0) {
+        const attColumns = getColumnNames(attResult.columns)
+        email.attachments = attResult.rows.map(row => {
+          const obj: Record<string, unknown> = {}
+          attColumns.forEach((col, i) => { obj[col] = row[i] })
+          return {
+            id: obj.id as string,
+            email_id: obj.email_id as string,
+            filename: obj.filename as string,
+            content_type: obj.content_type as string,
+            size_bytes: obj.size_bytes !== null && obj.size_bytes !== undefined ? Number(obj.size_bytes) : null,
+            content_disposition: (obj.content_disposition as string) ?? null,
+            content_id: (obj.content_id as string) ?? null,
+            mime_part_index: Number(obj.mime_part_index),
+            text_content: (obj.text_content as string) ?? '',
+            text_extraction_status: (obj.text_extraction_status as string ?? 'pending') as import('../../core/types.js').AttachmentTextExtractionStatus,
+            storage_key: (obj.storage_key as string) ?? null,
+            created_at: obj.created_at as string,
+          }
+        })
+      } else {
+        email.attachments = []
+      }
+
+      return email
     },
 
     async getCode(mailbox, options) {
