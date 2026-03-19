@@ -512,6 +512,70 @@ describe('db9 provider', () => {
     expect(executedQuery).toContain('idx_attachments_email_id')
   })
 
+  test('getAttachment returns text attachment content', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        columns: ['filename', 'content_type', 'text_content', 'text_extraction_status'],
+        rows: [['report.pdf', 'application/pdf', 'extracted pdf text', 'done']],
+        row_count: 1,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const result = await provider.getAttachment!('att-1')
+    expect(result).not.toBeNull()
+    expect(result!.filename).toBe('report.pdf')
+    expect(result!.contentType).toBe('application/pdf')
+    const text = new TextDecoder().decode(result!.data)
+    expect(text).toBe('extracted pdf text')
+  })
+
+  test('getAttachment returns null for binary attachment', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        columns: ['filename', 'content_type', 'text_content', 'text_extraction_status'],
+        rows: [['image.png', 'image/png', '', 'unsupported']],
+        row_count: 1,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const result = await provider.getAttachment!('att-2')
+    expect(result).toBeNull()
+  })
+
+  test('getAttachment returns null for unknown id', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        columns: ['filename', 'content_type', 'text_content', 'text_extraction_status'],
+        rows: [],
+        row_count: 0,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    const result = await provider.getAttachment!('nonexistent')
+    expect(result).toBeNull()
+  })
+
+  test('getAttachment sends correct SQL', async () => {
+    let executedQuery = ''
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      executedQuery = body.query
+      return new Response(JSON.stringify({
+        columns: ['filename', 'content_type', 'text_content', 'text_extraction_status'],
+        rows: [],
+        row_count: 0,
+      }))
+    }) as typeof fetch
+
+    const provider = createDb9Provider('token', 'db-123')
+    await provider.getAttachment!('att-xyz')
+    expect(executedQuery).toContain('SELECT filename, content_type, text_content, text_extraction_status FROM attachments')
+    expect(executedQuery).toContain("WHERE id = 'att-xyz'")
+  })
+
   test('SEARCH_VECTOR includes attachment_search_text', async () => {
     let executedQuery = ''
     globalThis.fetch = mock(async (_url: string, init: RequestInit) => {

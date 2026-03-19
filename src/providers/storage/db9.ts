@@ -1,4 +1,4 @@
-import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
+import type { AttachmentDownload, Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
 // Issue #1 fix: remove invalid GIN index, use generated column instead
 const SCHEMA = `
@@ -290,6 +290,27 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
       }
 
       return null
+    },
+
+    async getAttachment(id: string): Promise<AttachmentDownload | null> {
+      const result = await sql(`SELECT filename, content_type, text_content, text_extraction_status FROM attachments WHERE id = '${esc(id)}'`)
+      if (result.row_count === 0) return null
+
+      const columns = getColumnNames(result.columns)
+      const row = result.rows[0]!
+      const obj: Record<string, unknown> = {}
+      columns.forEach((col, i) => { obj[col] = row[i] })
+
+      const textExtractionStatus = obj.text_extraction_status as string
+      const textContent = obj.text_content as string
+
+      if (textExtractionStatus !== 'done' || !textContent) return null
+
+      return {
+        data: new TextEncoder().encode(textContent).buffer as ArrayBuffer,
+        filename: obj.filename as string,
+        contentType: obj.content_type as string,
+      }
     },
   }
 }
