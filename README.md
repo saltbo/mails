@@ -7,6 +7,45 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
 
+## How it works
+
+```
+                          SENDING                                    RECEIVING
+
+  Agent                                              External
+    |                                                  |
+    |  mails send --to user@example.com                |  email to agent@mails.dev
+    |                                                  |
+    v                                                  v
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
+|  /SDK  |         |   API    |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                                                  |
+    |  or POST /v1/send (hosted)                       |  email() handler
+    |                                                  v
+    v                                          +-------------+
++-------------------+                          |   Worker    |
+| mails.dev Cloud   |                          | (your own)  |
+| (100 free/month)  |                          +-------------+
++-------------------+                                  |
+                                                       |  store
+                                                       v
+                                  +--------------------------------------+
+                                  |           Storage Provider           |
+                                  |                                      |
+                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  +--------------------------------------+
+                                                       |
+                                              query via CLI/SDK
+                                                       |
+                                                       v
+                                                    Agent
+                                              mails inbox
+                                              mails inbox --query "code"
+                                              mails code --to agent@mails.dev
+```
+
 ## Features
 
 - **Send emails** via Resend with attachment support

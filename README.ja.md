@@ -7,6 +7,45 @@ AIエージェント向けのメールインフラ。プログラムでメール
 
 [English](https://github.com/chekusu/mails/blob/main/README.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
 
+## 仕組み
+
+```
+                           送信                                       受信
+
+  Agent                                              外部送信者
+    |                                                  |
+    |  mails send --to user@example.com                |  agent@mails.dev にメール送信
+    |                                                  |
+    v                                                  v
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
+|  /SDK  |         |   API    |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                                                  |
+    |  または POST /v1/send（ホスティング）               |  email() handler
+    |                                                  v
+    v                                          +-------------+
++-------------------+                          |   Worker    |
+| mails.dev クラウド |                          | (セルフホスト)|
+| (月100通無料)      |                          +-------------+
++-------------------+                                  |
+                                                       |  保存
+                                                       v
+                                  +--------------------------------------+
+                                  |         ストレージプロバイダー          |
+                                  |                                      |
+                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  +--------------------------------------+
+                                                       |
+                                              CLI/SDKで問い合わせ
+                                                       |
+                                                       v
+                                                    Agent
+                                              mails inbox
+                                              mails inbox --query "コード"
+                                              mails code --to agent@mails.dev
+```
+
 ## 特徴
 
 - **メール送信** — Resend経由、添付ファイル対応

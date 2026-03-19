@@ -7,6 +7,45 @@
 
 [English](https://github.com/chekusu/mails/blob/main/README.md) | [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md)
 
+## 工作原理
+
+```
+                           发送                                       接收
+
+  Agent                                              外部发件人
+    |                                                  |
+    |  mails send --to user@example.com                |  发送邮件到 agent@mails.dev
+    |                                                  |
+    v                                                  v
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
+|  /SDK  |         |   API    |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                                                  |
+    |  或 POST /v1/send（托管模式）                      |  email() handler
+    |                                                  v
+    v                                          +-------------+
++-------------------+                          |   Worker    |
+| mails.dev 云服务   |                          | (自部署)     |
+| (每月 100 封免费)  |                          +-------------+
++-------------------+                                  |
+                                                       |  存储
+                                                       v
+                                  +--------------------------------------+
+                                  |           存储 Provider               |
+                                  |                                      |
+                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  +--------------------------------------+
+                                                       |
+                                              通过 CLI/SDK 查询
+                                                       |
+                                                       v
+                                                    Agent
+                                              mails inbox
+                                              mails inbox --query "验证码"
+                                              mails code --to agent@mails.dev
+```
+
 ## 特性
 
 - **发送邮件** — 通过 Resend，支持附件
