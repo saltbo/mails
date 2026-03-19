@@ -94,6 +94,7 @@ export interface MailsConfig {
   worker_token?: string
   default_from?: string
   api_key?: string
+  last_sync?: string
 }
 
 export interface SendProvider {
