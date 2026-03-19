@@ -8,17 +8,16 @@ function resolveProvider(): SendProvider {
   const config = loadConfig()
 
   // Priority:
-  // 1. User has their own resend_api_key → direct Resend (unlimited)
-  // 2. User has api_key (hosted mode) → cloud send via /v1/send (100 free/month + x402)
-  // 3. Explicit send_provider=resend without key → error
-  // 4. Nothing configured → error
-
-  if (config.resend_api_key) {
-    return createResendProvider(config.resend_api_key)
-  }
+  // 1. api_key (hosted mode) → cloud send via /v1/send (100 free/month + x402)
+  // 2. resend_api_key → direct Resend (unlimited, self-managed)
+  // 3. Nothing configured → error
 
   if (config.api_key) {
     return createHostedSendProvider(config.api_key)
+  }
+
+  if (config.resend_api_key) {
+    return createResendProvider(config.resend_api_key)
   }
 
   if (config.send_provider === 'resend') {

@@ -122,22 +122,23 @@ describe('send', () => {
     expect(result.provider).toBe('mails.dev')
   })
 
-  test('resend_api_key takes priority over api_key', async () => {
+  test('api_key takes priority over resend_api_key', async () => {
     saveConfig({
       ...BASE_CONFIG,
-      resend_api_key: 're_priority',
-      api_key: 'mk_should_not_use',
+      resend_api_key: 're_should_not_use',
+      api_key: 'mk_priority',
+      default_from: 'agent@mails.dev',
     })
 
     let usedUrl = ''
     globalThis.fetch = mock(async (url: string) => {
       usedUrl = url
-      return new Response(JSON.stringify({ id: 'resend_1' }))
+      return new Response(JSON.stringify({ id: 'hosted_priority', sends_this_month: 1, monthly_limit: 100 }))
     }) as typeof fetch
 
     const result = await send({ to: 'user@example.com', subject: 'Priority', text: 'test' })
-    expect(usedUrl).toContain('resend.com')
-    expect(result.provider).toBe('resend')
+    expect(usedUrl).toContain('/v1/send')
+    expect(result.provider).toBe('mails.dev')
   })
 
   test('throws resend_api_key error when explicitly set as provider without key', async () => {
