@@ -461,4 +461,44 @@ describe('SQLite provider', () => {
     expect(withoutAtt.has_attachments).toBe(false)
     expect(withoutAtt.attachment_count).toBe(0)
   })
+
+  test('searchEmails escapes % wildcard in query', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'percent-match',
+      subject: 'discount 100% off',
+      received_at: '2025-01-02T00:00:00Z',
+    }))
+    await provider.saveEmail(makeEmail({
+      id: 'percent-no-match',
+      subject: 'something else',
+      received_at: '2025-01-01T00:00:00Z',
+    }))
+
+    const results = await provider.searchEmails('agent@test.com', { query: '100%' })
+    expect(results).toHaveLength(1)
+    expect(results[0]!.subject).toContain('100%')
+  })
+
+  test('searchEmails escapes _ wildcard in query', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'underscore-match',
+      subject: 'user_admin',
+      received_at: '2025-01-02T00:00:00Z',
+    }))
+    await provider.saveEmail(makeEmail({
+      id: 'underscore-no-match',
+      subject: 'user3admin',
+      received_at: '2025-01-01T00:00:00Z',
+    }))
+
+    const results = await provider.searchEmails('agent@test.com', { query: 'user_admin' })
+    expect(results).toHaveLength(1)
+    expect(results[0]!.subject).toBe('user_admin')
+  })
 })
