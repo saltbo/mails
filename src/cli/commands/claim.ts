@@ -51,16 +51,14 @@ export async function claimCommand(args: string[]) {
     console.log('')
     console.log(`  If the page didn't open: ${claimUrl}`)
   } else {
-    // No browser (sandbox / SSH / headless) — device code is primary
+    // No browser (sandbox / SSH / headless)
     console.log(`  Claiming ${name}@mails.dev`)
     console.log('')
-    console.log(`  To complete, ask a human to visit:`)
+    console.log(`  Open this link to confirm:`)
     console.log('')
-    console.log(`    ${CLAIM_PAGE}`)
+    console.log(`    ${claimUrl}`)
     console.log('')
-    console.log(`  and enter this code:`)
-    console.log('')
-    console.log(`    ${device_code}`)
+    console.log(`  Or visit ${CLAIM_PAGE} and enter code: ${device_code}`)
   }
   console.log('')
 

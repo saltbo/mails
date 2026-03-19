@@ -35,7 +35,7 @@ async function main() {
     case 'version':
     case '--version':
     case '-v':
-      console.log('mails v1.2.2')
+      console.log('mails v1.2.3')
       break
     default:
       console.error(`Unknown command: ${command}`)
