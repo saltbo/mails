@@ -54,6 +54,7 @@
 - **验证码自动提取** — 自动从邮件中提取验证码（支持中/英/日/韩）
 - **附件** — CLI `--attach` 或 SDK 发送，Worker 自动解析 MIME 附件
 - **存储 Provider** — 本地 SQLite、[db9.ai](https://db9.ai) 云端 PostgreSQL、或远程 Worker API
+- **零运行时依赖** — Resend provider 仅使用原生 `fetch()`
 - **托管服务** — 通过 `mails claim` 免费获取 `@mails.dev` 邮箱
 - **自部署** — 部署自己的 Worker，支持可选的 AUTH_TOKEN 鉴权
 
@@ -61,6 +62,10 @@
 
 ```bash
 npm install -g mails
+# 或
+bun install -g mails
+# 或直接使用
+npx mails
 ```
 
 ## 快速开始
@@ -89,15 +94,29 @@ mails inbox                          # 查询你的 Worker API
 
 ## CLI 参考
 
+### claim
+
 ```bash
-mails claim <name>                           # 认领 @mails.dev 邮箱
-mails send --to <email> --subject <s> --body <text>
-mails send --to <email> --subject <s> --body <text> --attach file.pdf
+mails claim <name>                   # 认领 name@mails.dev（每人最多 10 个）
+```
+
+### send
+
+```bash
+mails send --to <email> --subject <subject> --body <text>
+mails send --to <email> --subject <subject> --html "<h1>Hello</h1>"
+mails send --from "Name <email>" --to <email> --subject <subject> --body <text>
+mails send --to <email> --subject "Report" --body "See attached" --attach report.pdf
+```
+
+### inbox
+
+```bash
 mails inbox                                  # 最近邮件列表
-mails inbox --query "关键词"                   # 全文搜索（按相关性排序）
-mails inbox <id>                             # 查看邮件详情（含附件）
-mails code --to <addr> --timeout 30          # 等待验证码
-mails config                                 # 查看配置
+mails inbox --mailbox agent@test.com         # 指定邮箱
+mails inbox --query "password reset"         # 全文搜索（按相关性排序）
+mails inbox --query "invoice" --direction inbound --limit 10
+mails inbox <id>                             # 查看邮件详情 + 附件
 
 # 高级过滤（mails.dev 托管 / db9）
 mails inbox --has-attachments                # 只看带附件的邮件
@@ -108,18 +127,45 @@ mails inbox --header "X-Mailer:sendgrid"    # 按邮件头过滤
 
 # 任意组合
 mails inbox --from github.com --has-attachments --since 2026-03-13
-mails inbox --query "部署" --attachment-type log --direction inbound
+mails inbox --query "deploy" --attachment-type log --direction inbound
+```
 
-# 发件人统计
+### stats
+
+```bash
 mails stats senders                          # 按发件人频率排行
 ```
 
-## SDK
+### code
+
+```bash
+mails code --to agent@test.com              # 等待验证码（默认 30 秒）
+mails code --to agent@test.com --timeout 60 # 自定义超时
+```
+
+验证码输出到 stdout，方便管道使用：`CODE=$(mails code --to agent@test.com)`
+
+### config
+
+```bash
+mails config                    # 查看所有配置
+mails config set <key> <value>  # 设置配置项
+mails config get <key>          # 获取配置项
+```
+
+## SDK 用法
 
 ```typescript
 import { send, getInbox, searchInbox, waitForCode } from 'mails'
 
-// 发送（支持附件）
+// 发送
+const result = await send({
+  to: 'user@example.com',
+  subject: 'Hello',
+  text: 'World',
+})
+
+// 发送附件
 await send({
   to: 'user@example.com',
   subject: 'Report',
@@ -127,8 +173,14 @@ await send({
   attachments: [{ path: './report.pdf' }],
 })
 
+// 收件箱列表
+const emails = await getInbox('agent@mails.dev', { limit: 10 })
+
 // 搜索收件箱（全文搜索，按相关性排序）
-const results = await searchInbox('agent@mails.dev', { query: '密码重置' })
+const results = await searchInbox('agent@mails.dev', {
+  query: 'password reset',
+  direction: 'inbound',
+})
 
 // 高级过滤（mails.dev 托管 / db9）
 const pdfs = await getInbox('agent@mails.dev', {
@@ -139,29 +191,87 @@ const pdfs = await getInbox('agent@mails.dev', {
 
 // 等待验证码
 const code = await waitForCode('agent@mails.dev', { timeout: 30 })
+if (code) console.log(code.code) // "123456"
 ```
 
-## Worker 自部署
+## Email Worker
 
-部署后可选设置鉴权：`wrangler secret put AUTH_TOKEN`
+`worker/` 目录包含用于接收邮件的 Cloudflare Email Routing Worker。
+
+### 部署
+
+```bash
+cd worker
+bun install
+wrangler d1 create mails
+# 编辑 wrangler.toml — 设置你的 D1 数据库 ID
+wrangler d1 execute mails --file=schema.sql
+wrangler deploy
+```
+
+然后在 Cloudflare Email Routing 中配置转发到该 Worker。
+
+### 安全配置（可选）
+
+```bash
+wrangler secret put AUTH_TOKEN    # 设置密钥 token
+```
+
+设置 `AUTH_TOKEN` 后，所有 `/api/*` 端点都需要 `Authorization: Bearer <token>` 鉴权。`/health` 始终公开。
+
+### Worker API
 
 | 端点 | 说明 |
 |------|------|
+| `GET /api/inbox?to=<addr>&limit=20` | 邮件列表 |
 | `GET /api/inbox?to=<addr>&query=<text>` | 搜索邮件 |
-| `GET /api/code?to=<addr>&timeout=30` | 等待验证码 |
+| `GET /api/code?to=<addr>&timeout=30` | 长轮询等待验证码 |
 | `GET /api/email?id=<id>` | 邮件详情（含附件） |
+| `GET /health` | 健康检查（始终公开） |
+
+## 存储 Provider
+
+CLI 自动检测存储 Provider：
+- 配置了 `api_key` → 远程（mails.dev 托管）
+- 配置了 `worker_url` → 远程（自部署 Worker）
+- 否则 → 本地 SQLite
+
+### SQLite（默认）
+
+本地数据库，路径 `~/.mails/mails.db`。零配置。
+
+### db9.ai
+
+面向 AI Agent 的云端 PostgreSQL。支持全文搜索（按相关性排序）、附件内容搜索和高级过滤。
+
+```bash
+mails config set storage_provider db9
+mails config set db9_token YOUR_TOKEN
+mails config set db9_database_id YOUR_DB_ID
+```
+
+使用 db9 后可获得：
+- **加权全文搜索** — 主题（最高权重）> 发件人 > 正文 > 附件文本
+- **附件过滤** — 按类型、按名称、有/无附件
+- **发件人 & 时间过滤** — `--from`、`--since`、`--until`
+- **邮件头查询** — 搜索 JSONB 邮件头
+- **发件人统计** — 所有发件人的频率排行
+
+### Remote（Worker API）
+
+直接查询 Worker HTTP API。配置了 `api_key` 或 `worker_url` 时自动启用。
 
 ## 配置项
 
-| 键 | 说明 |
-|---|------|
-| `mailbox` | 接收邮箱地址 |
-| `api_key` | mails.dev 托管服务 API key |
-| `worker_url` | 自部署 Worker URL |
-| `worker_token` | 自部署 Worker 鉴权 token |
-| `resend_api_key` | Resend API 密钥 |
-| `default_from` | 默认发件人地址 |
-| `storage_provider` | `sqlite`、`db9` 或 `remote`（自动检测） |
+| 键 | 默认值 | 说明 |
+|---|--------|------|
+| `mailbox` | | 接收邮箱地址 |
+| `api_key` | | mails.dev 托管服务 API key |
+| `worker_url` | | 自部署 Worker URL |
+| `worker_token` | | 自部署 Worker 鉴权 token |
+| `resend_api_key` | | Resend API 密钥 |
+| `default_from` | | 默认发件人地址 |
+| `storage_provider` | auto | `sqlite`、`db9` 或 `remote` |
 
 ## 测试
 
