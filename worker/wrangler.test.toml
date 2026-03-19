@@ -1,0 +1,8 @@
+name = "mails-oss-test"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mails-oss-test"
+database_id = "5cf523a6-f9a7-4b7a-b1d4-b1901c8e0d1a"

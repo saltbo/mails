@@ -259,6 +259,63 @@ describe('worker: POST /api/send', () => {
     expect(json2.id).toBe('resend-id-123')
   })
 
+  test('sends email with attachments', async () => {
+    const { db, bindMock } = createMockD1()
+    const env: Env = { DB: db, RESEND_API_KEY: 're_test_key' }
+
+    const bodyWithAttachments = {
+      ...SEND_BODY,
+      attachments: [
+        { filename: 'report.pdf', content: 'base64data', content_type: 'application/pdf' },
+        { filename: 'notes.txt', content: 'dGV4dA==' },
+      ],
+    }
+
+    const request = new Request('http://localhost/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyWithAttachments),
+    })
+
+    const response = await worker.fetch(request, env)
+    expect(response.status).toBe(200)
+
+    // Verify Resend body includes attachments
+    const [, resendInit] = (fetchMock as any).mock.calls[0]
+    const resendBody = JSON.parse(resendInit.body)
+    expect(resendBody.attachments).toHaveLength(2)
+    expect(resendBody.attachments[0].filename).toBe('report.pdf')
+    expect(resendBody.attachments[0].content_type).toBe('application/pdf')
+    expect(resendBody.attachments[1].filename).toBe('notes.txt')
+    expect(resendBody.attachments[1].content_type).toBeUndefined()
+
+    // Verify D1 records has_attachments
+    const boundArgs = (bindMock as any).mock.calls[0]
+    expect(boundArgs[7]).toBe(1) // has_attachments
+    expect(boundArgs[8]).toBe(2) // attachment_count
+  })
+
+  test('returns Resend error on failure', async () => {
+    const { db } = createMockD1()
+    const env: Env = { DB: db, RESEND_API_KEY: 're_test_key' }
+
+    globalThis.fetch = mock(() =>
+      Promise.resolve(Response.json({ message: 'Invalid API key' }, { status: 403 }))
+    ) as typeof fetch
+
+    const request = new Request('http://localhost/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(SEND_BODY),
+    })
+
+    const response = await worker.fetch(request, env)
+    const json = await response.json() as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(json.error).toBe('Invalid API key')
+  })
+
   test('returns 405 for non-POST methods', async () => {
     const { db } = createMockD1()
     const env: Env = { DB: db, RESEND_API_KEY: 're_test_key' }

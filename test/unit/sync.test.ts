@@ -229,6 +229,117 @@ describe('CLI: sync command', () => {
     expect(errors.join('\n')).toContain('No worker_url or api_key configured')
   })
 
+  test('sync errors when no mailbox configured', async () => {
+    saveConfig({
+      mode: 'selfhosted',
+      domain: 'mails.dev',
+      mailbox: '',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      worker_url: 'http://localhost:8787',
+    })
+
+    const errors: string[] = []
+    console.log = () => {}
+    console.error = (msg?: unknown) => { errors.push(String(msg ?? '')) }
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+    process.stdout.write = (() => true) as typeof process.stdout.write
+
+    const { syncCommand } = await importSyncCommand()
+    await expect(syncCommand([])).rejects.toThrow('exit:1')
+    expect(errors.join('\n')).toContain('No mailbox configured')
+  })
+
+  test('sync sends api_key as Bearer token for hosted mode', async () => {
+    saveConfig({
+      mode: 'hosted',
+      domain: 'mails.dev',
+      mailbox: 'agent@mails.dev',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      api_key: 'mk_test_key',
+    })
+
+    const saved: Email[] = []
+    _resetStorage(createMockStorage(saved))
+
+    let capturedHeaders: Record<string, string> = {}
+    let capturedUrl = ''
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = typeof url === 'string' ? url : url.toString()
+      capturedHeaders = (init?.headers as Record<string, string>) ?? {}
+      return new Response(JSON.stringify({ emails: [], total: 0, has_more: false }))
+    }) as typeof fetch
+
+    const output: string[] = []
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+    process.stdout.write = (() => true) as typeof process.stdout.write
+
+    const { syncCommand } = await importSyncCommand()
+    await syncCommand([])
+
+    expect(capturedHeaders['Authorization']).toBe('Bearer mk_test_key')
+    expect(capturedUrl).toContain('/v1/sync')
+    expect(capturedUrl).not.toContain('to=')
+  })
+
+  test('sync sends worker_token as Bearer for self-hosted mode', async () => {
+    saveConfig({
+      mode: 'selfhosted',
+      domain: 'mails.dev',
+      mailbox: 'agent@test.com',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      worker_url: 'http://localhost:8787',
+      worker_token: 'wt_secret',
+    })
+
+    const saved: Email[] = []
+    _resetStorage(createMockStorage(saved))
+
+    let capturedHeaders: Record<string, string> = {}
+    let capturedUrl = ''
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = typeof url === 'string' ? url : url.toString()
+      capturedHeaders = (init?.headers as Record<string, string>) ?? {}
+      return new Response(JSON.stringify({ emails: [], total: 0, has_more: false }))
+    }) as typeof fetch
+
+    const output: string[] = []
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+    process.stdout.write = (() => true) as typeof process.stdout.write
+
+    const { syncCommand } = await importSyncCommand()
+    await syncCommand([])
+
+    expect(capturedHeaders['Authorization']).toBe('Bearer wt_secret')
+    expect(capturedUrl).toContain('/api/sync')
+    expect(capturedUrl).toContain('to=agent%40test.com')
+  })
+
+  test('sync errors on API failure', async () => {
+    const saved: Email[] = []
+    _resetStorage(createMockStorage(saved))
+
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+    }) as typeof fetch
+
+    const errors: string[] = []
+    console.log = () => {}
+    console.error = (msg?: unknown) => { errors.push(String(msg ?? '')) }
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+    process.stdout.write = (() => true) as typeof process.stdout.write
+
+    const { syncCommand } = await importSyncCommand()
+    await expect(syncCommand([])).rejects.toThrow('exit:1')
+    expect(errors.join('\n')).toContain('Sync error')
+  })
+
   test('sync errors when storage is remote', async () => {
     const remoteStorage: StorageProvider = {
       name: 'remote',
