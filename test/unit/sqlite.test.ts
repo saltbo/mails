@@ -355,6 +355,84 @@ describe('SQLite provider', () => {
     expect(email!.attachments).toEqual([])
   })
 
+  test('getAttachment returns text attachment content', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    const attachments: Attachment[] = [
+      {
+        id: 'dl-att-1',
+        email_id: 'dl-email-1',
+        filename: 'data.csv',
+        content_type: 'text/csv',
+        size_bytes: 23,
+        content_disposition: 'attachment',
+        content_id: null,
+        mime_part_index: 0,
+        text_content: 'col1,col2\nval1,val2',
+        text_extraction_status: 'done',
+        storage_key: null,
+        created_at: new Date().toISOString(),
+      },
+    ]
+
+    await provider.saveEmail(makeEmail({
+      id: 'dl-email-1',
+      has_attachments: true,
+      attachment_count: 1,
+      attachment_names: 'data.csv',
+      attachments,
+    }))
+
+    const result = await provider.getAttachment!('dl-att-1')
+    expect(result).not.toBeNull()
+    expect(result!.filename).toBe('data.csv')
+    expect(result!.contentType).toBe('text/csv')
+    const text = new TextDecoder().decode(result!.data)
+    expect(text).toBe('col1,col2\nval1,val2')
+  })
+
+  test('getAttachment returns null for binary attachment', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    const attachments: Attachment[] = [
+      {
+        id: 'bin-att-1',
+        email_id: 'bin-email-1',
+        filename: 'photo.png',
+        content_type: 'image/png',
+        size_bytes: 50000,
+        content_disposition: 'attachment',
+        content_id: null,
+        mime_part_index: 0,
+        text_content: '',
+        text_extraction_status: 'unsupported',
+        storage_key: null,
+        created_at: new Date().toISOString(),
+      },
+    ]
+
+    await provider.saveEmail(makeEmail({
+      id: 'bin-email-1',
+      has_attachments: true,
+      attachment_count: 1,
+      attachment_names: 'photo.png',
+      attachments,
+    }))
+
+    const result = await provider.getAttachment!('bin-att-1')
+    expect(result).toBeNull()
+  })
+
+  test('getAttachment returns null for unknown id', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    const result = await provider.getAttachment!('nonexistent')
+    expect(result).toBeNull()
+  })
+
   test('getEmails returns has_attachments and attachment_count', async () => {
     const provider = createSqliteProvider(TEST_DB)
     await provider.init()

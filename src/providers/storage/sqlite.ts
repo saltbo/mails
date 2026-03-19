@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import type { Attachment, Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
+import type { Attachment, AttachmentDownload, Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS emails (
@@ -114,7 +114,8 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
 
     async searchEmails(mailbox, options) {
       const { limit, offset } = normalizeQueryOptions(options)
-      const pattern = `%${options.query}%`
+      const escaped = options.query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+      const pattern = `%${escaped}%`
       let query = `
         SELECT * FROM emails
         WHERE mailbox = ?
@@ -128,12 +129,12 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
 
       query += `
         AND (
-          subject LIKE ? COLLATE NOCASE
-          OR body_text LIKE ? COLLATE NOCASE
-          OR from_address LIKE ? COLLATE NOCASE
-          OR from_name LIKE ? COLLATE NOCASE
-          OR to_address LIKE ? COLLATE NOCASE
-          OR code LIKE ? COLLATE NOCASE
+          subject LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR body_text LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR from_address LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR from_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR to_address LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR code LIKE ? ESCAPE '\\' COLLATE NOCASE
         )
         ORDER BY received_at DESC
         LIMIT ? OFFSET ?
@@ -179,6 +180,21 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
       }
 
       return null
+    },
+
+    async getAttachment(id: string): Promise<AttachmentDownload | null> {
+      const row = db.prepare(
+        'SELECT filename, content_type, text_content, text_extraction_status FROM attachments WHERE id = ?',
+      ).get(id) as { filename: string; content_type: string; text_content: string; text_extraction_status: string } | null
+
+      if (!row) return null
+      if (row.text_extraction_status !== 'done' || !row.text_content) return null
+
+      return {
+        data: new TextEncoder().encode(row.text_content).buffer as ArrayBuffer,
+        filename: row.filename,
+        contentType: row.content_type,
+      }
     },
   }
 }
