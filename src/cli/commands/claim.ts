@@ -57,8 +57,6 @@ export async function claimCommand(args: string[]) {
     console.log(`  Open this link to confirm:`)
     console.log('')
     console.log(`    ${claimUrl}`)
-    console.log('')
-    console.log(`  Or visit ${CLAIM_PAGE} and enter code: ${device_code}`)
   }
   console.log('')
 
