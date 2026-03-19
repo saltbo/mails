@@ -175,6 +175,7 @@ describe('E2E: claim polling flow', () => {
     const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'))
     expect(config.mailbox).toBe(fullAddress)
     expect(config.api_key).toBe(apiKey)
+    expect(config.default_from).toBe(fullAddress)
     console.log('  Config saved correctly')
   }, 30000)
 
