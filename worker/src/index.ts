@@ -5,6 +5,8 @@ export interface Env {
   DB: D1Database
   /** Optional auth token. If set, all /api/* endpoints require Authorization: Bearer <token>. */
   AUTH_TOKEN?: string
+  /** Resend API key for outbound email sending. */
+  RESEND_API_KEY?: string
 }
 
 export default {
@@ -39,6 +41,16 @@ export default {
             break
           case '/api/email':
             response = await handleGetEmail(url, env)
+            break
+          case '/api/send':
+            if (request.method !== 'POST') {
+              response = Response.json({ error: 'Method not allowed' }, { status: 405 })
+            } else {
+              response = await handleSend(request, env)
+            }
+            break
+          case '/api/sync':
+            response = await handleSync(url, env)
             break
           default:
             response = Response.json({ error: 'Not found' }, { status: 404 })
@@ -261,6 +273,131 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
       ...attachment,
       downloadable: Boolean(attachment.storage_key),
     })),
+  })
+}
+
+async function handleSend(request: Request, env: Env): Promise<Response> {
+  if (!env.RESEND_API_KEY) {
+    return Response.json({ error: 'RESEND_API_KEY not configured' }, { status: 500 })
+  }
+
+  const body = await request.json() as {
+    from?: string
+    to?: string[]
+    subject?: string
+    text?: string
+    html?: string
+    reply_to?: string
+    attachments?: Array<{ filename: string; content: string; content_type?: string }>
+  }
+
+  if (!body.from || !body.to?.length || !body.subject) {
+    return Response.json({ error: 'Missing required fields: from, to, subject' }, { status: 400 })
+  }
+  if (!body.text && !body.html) {
+    return Response.json({ error: 'Either text or html is required' }, { status: 400 })
+  }
+
+  // Call Resend API
+  const resendBody: Record<string, unknown> = {
+    from: body.from,
+    to: body.to,
+    subject: body.subject,
+  }
+  if (body.text) resendBody.text = body.text
+  if (body.html) resendBody.html = body.html
+  if (body.reply_to) resendBody.reply_to = body.reply_to
+  if (body.attachments?.length) {
+    resendBody.attachments = body.attachments.map(a => ({
+      filename: a.filename,
+      content: a.content,
+      ...(a.content_type ? { content_type: a.content_type } : {}),
+    }))
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(resendBody),
+  })
+
+  const data = await res.json() as { id?: string; message?: string }
+  if (!res.ok) {
+    return Response.json({ error: data.message ?? 'Resend error' }, { status: res.status })
+  }
+
+  // Record outbound in D1
+  const id = data.id ?? crypto.randomUUID()
+  const now = new Date().toISOString()
+
+  await env.DB.prepare(`
+    INSERT INTO emails (
+      id, mailbox, from_address, from_name, to_address, subject,
+      body_text, body_html, code, headers, metadata, message_id,
+      has_attachments, attachment_count, attachment_names, attachment_search_text,
+      raw_storage_key, direction, status, received_at, created_at
+    ) VALUES (?, ?, ?, '', ?, ?, ?, ?, NULL, '{}', '{}', NULL, ?, ?, '', '', NULL, 'outbound', 'sent', ?, ?)
+  `).bind(
+    id, body.from, body.from, body.to.join(', '), body.subject,
+    (body.text ?? '').slice(0, 50000), (body.html ?? '').slice(0, 100000),
+    body.attachments?.length ? 1 : 0,
+    body.attachments?.length ?? 0,
+    now, now,
+  ).run()
+
+  return Response.json({ id, from: body.from })
+}
+
+async function handleSync(url: URL, env: Env): Promise<Response> {
+  const to = url.searchParams.get('to')
+  if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
+
+  const since = url.searchParams.get('since') || '1970-01-01T00:00:00Z'
+  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '100'), 500)
+  const offset = parseInt(url.searchParams.get('offset') ?? '0')
+
+  // Count total matching emails
+  const countRow = await env.DB.prepare(
+    'SELECT COUNT(*) as total FROM emails WHERE mailbox = ? AND received_at > ?'
+  ).bind(to, since).first<{ total: number }>()
+  const total = countRow?.total ?? 0
+
+  // Get emails with full data
+  const rows = await env.DB.prepare(`
+    SELECT * FROM emails
+    WHERE mailbox = ? AND received_at > ?
+    ORDER BY received_at ASC
+    LIMIT ? OFFSET ?
+  `).bind(to, since, limit, offset).all()
+
+  // For each email, fetch attachments
+  const emails = []
+  for (const row of rows.results) {
+    const r = row as Record<string, unknown>
+    const attachments = await env.DB.prepare(
+      'SELECT * FROM attachments WHERE email_id = ? ORDER BY mime_part_index ASC'
+    ).bind(r.id).all()
+
+    emails.push({
+      ...r,
+      headers: safeJsonParse(r.headers as string, {}),
+      metadata: safeJsonParse(r.metadata as string, {}),
+      has_attachments: Boolean(r.has_attachments),
+      attachment_count: (r.attachment_count as number) ?? 0,
+      attachments: attachments.results.map((a: Record<string, unknown>) => ({
+        ...a,
+        downloadable: Boolean(a.storage_key),
+      })),
+    })
+  }
+
+  return Response.json({
+    emails,
+    total,
+    has_more: offset + limit < total,
   })
 }
 
