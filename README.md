@@ -28,7 +28,6 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
     v                                                   |
 +---------------------------------------------------+   |
 |                    Worker                         |<--+
-|                                                   |
 |  mails.dev (hosted)  or  your own (self-hosted)   |
 |                                                   |
 |  +----------+    +---------+    +--------------+  |
@@ -36,17 +35,18 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 |  | (send)   |    | (store) |    | (attachments)|  |
 |  +----------+    +---------+    +--------------+  |
 +---------------------------------------------------+
-                        |
-          +-------------+-------------+
           |                           |
     query via CLI/SDK           mails sync
-    (mails inbox)            (pull to local)
+     (remote provider)        (pull to local)
           |                           |
-          v                           v
-       Agent                  +-------------+
-                              | Local SQLite|
-                              |  (offline)  |
-                              +-------------+
+          v                     +-----+------+
+       Agent                    |            |
+                          +---------+  +-----------+
+                          | SQLite  |  |  db9.ai   |
+                          | (local) |  |  (cloud)  |
+                          +---------+  +-----------+
+                           offline      FTS search
+                           backup       advanced filters
 ```
 
 ## Features
