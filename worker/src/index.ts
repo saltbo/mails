@@ -245,7 +245,8 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
   }>()
 
   if (!row) {
-    const matches = await env.DB.prepare('SELECT * FROM emails WHERE id LIKE ? ORDER BY received_at DESC LIMIT 2').bind(`${id}%`).all<{
+    const safeId = id.replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const matches = await env.DB.prepare("SELECT * FROM emails WHERE id LIKE ? ESCAPE '\\' ORDER BY received_at DESC LIMIT 2").bind(`${safeId}%`).all<{
       id: string
       mailbox: string
       from_address: string

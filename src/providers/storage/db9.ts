@@ -229,7 +229,7 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
       let emails = rowsToEmails(result)
       let email = emails[0] ?? null
       if (!email) {
-        result = await sql(`SELECT ${EMAIL_COLUMNS} FROM emails WHERE id LIKE '${esc(id)}%' ORDER BY received_at DESC LIMIT 2`)
+        result = await sql(`SELECT ${EMAIL_COLUMNS} FROM emails WHERE id LIKE '${escLike(id)}%' ORDER BY received_at DESC LIMIT 2`)
         emails = rowsToEmails(result)
         if (emails.length > 1) {
           throw new Error(`Ambiguous email id: ${id}`)

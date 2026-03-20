@@ -149,7 +149,8 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
     async getEmail(id) {
       let row = db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as Record<string, unknown> | null
       if (!row) {
-        const matches = db.prepare('SELECT * FROM emails WHERE id LIKE ? ORDER BY received_at DESC LIMIT 2').all(`${id}%`) as Record<string, unknown>[]
+        const safeId = id.replace(/%/g, '\\%').replace(/_/g, '\\_')
+        const matches = db.prepare("SELECT * FROM emails WHERE id LIKE ? ESCAPE '\\' ORDER BY received_at DESC LIMIT 2").all(`${safeId}%`) as Record<string, unknown>[]
         if (matches.length > 1) {
           throw new Error(`Ambiguous email id: ${id}`)
         }
