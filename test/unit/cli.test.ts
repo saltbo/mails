@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from 'bun:test'
-import { existsSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { setConfigValue, loadConfig, saveConfig } from '../../src/core/config'
+import { setConfigValue, loadConfig, saveConfig, CONFIG_DIR, CONFIG_FILE } from '../../src/core/config'
 import type { Email } from '../../src/core/types'
 
 describe('CLI: send command', () => {
@@ -99,6 +99,48 @@ describe('CLI: config command', () => {
     const config = loadConfig()
     expect(config.mode).toBe('hosted')
     expect(config.send_provider).toBe('resend')
+  })
+
+  test('config command masks secrets in set output and default display', async () => {
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+
+    try {
+      const { configCommand } = await import('../../src/cli/commands/config')
+      await configCommand(['set', 'worker_token', 'wt_secret_value_12345678'])
+      await configCommand([])
+    } finally {
+      console.log = originalLog
+    }
+
+    const text = output.join('\n')
+    expect(text).toContain('Set worker_token = wt_s...5678')
+    expect(text).not.toContain('wt_secret_value_12345678')
+  })
+
+  test('saveConfig writes restricted permissions on POSIX', () => {
+    saveConfig({
+      mode: 'hosted',
+      domain: 'mails.dev',
+      mailbox: 'agent@mails.dev',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      api_key: 'mk_secret_value_12345678',
+    })
+
+    if (process.platform !== 'win32') {
+      expect(statSync(CONFIG_DIR).mode & 0o777).toBe(0o700)
+      expect(statSync(CONFIG_FILE).mode & 0o777).toBe(0o600)
+    }
+  })
+})
+
+describe('CLI: version', () => {
+  test('CLI_VERSION matches package.json', () => {
+    const pkg = require('../../package.json')
+    const { CLI_VERSION } = require('../../src/version')
+    expect(CLI_VERSION).toBe(pkg.version)
   })
 })
 
@@ -416,5 +458,59 @@ describe('CLI: inbox command', () => {
     expect(text).toContain('doc.pdf')
     expect(text).toContain('5000 bytes')
   })
-})
 
+  test('detail save sanitizes attachment filenames', async () => {
+    const email = makeEmail({
+      id: 'save-att-123',
+      attachments: [
+        {
+          id: 'save-a1',
+          email_id: 'save-att-123',
+          filename: '../../escape.txt',
+          content_type: 'text/plain',
+          size_bytes: 4,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 0,
+          text_content: 'safe',
+          text_extraction_status: 'done' as const,
+          storage_key: null,
+          created_at: '2026-03-20T00:00:00Z',
+        },
+      ],
+    })
+    const output: string[] = []
+    const saveDir = join(import.meta.dir, '..', '.tmp-cli-save')
+
+    if (existsSync(saveDir)) rmSync(saveDir, { recursive: true, force: true })
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: mock(async () => []),
+      searchInbox: mock(async () => []),
+      getEmail: mock(async () => email),
+      downloadAttachment: mock(async () => ({
+        filename: '../../escape.txt',
+        contentType: 'text/plain',
+        data: new TextEncoder().encode('safe').buffer,
+      })),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    try {
+      const { inboxCommand } = await importInboxCommand()
+      await inboxCommand(['save-att-123', '--save', saveDir])
+    } finally {
+      // keep assertions below able to read saved output first
+    }
+
+    const savedPath = join(saveDir, 'escape.txt')
+    expect(existsSync(savedPath)).toBe(true)
+    expect(readFileSync(savedPath, 'utf-8')).toBe('safe')
+    expect(output.join('\n')).toContain(savedPath)
+
+    rmSync(saveDir, { recursive: true, force: true })
+  })
+})

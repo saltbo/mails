@@ -3,8 +3,12 @@ import { parseIncomingEmail } from './mime'
 
 export interface Env {
   DB: D1Database
-  /** Optional auth token. If set, all /api/* endpoints require Authorization: Bearer <token>. */
+  /** Single-mailbox token. Requires MAILBOX to be set. */
   AUTH_TOKEN?: string
+  /** Single mailbox address associated with AUTH_TOKEN. */
+  MAILBOX?: string
+  /** Optional multi-mailbox token map as JSON: {"mailbox@example.com":"token"} */
+  AUTH_TOKENS_JSON?: string
   /** Resend API key for outbound email sending. */
   RESEND_API_KEY?: string
 }
@@ -28,29 +32,29 @@ export default {
     if (url.pathname === '/health') {
       response = Response.json({ ok: true })
     } else if (url.pathname.startsWith('/api/')) {
-      // Check auth for /api/* if AUTH_TOKEN is configured
-      if (env.AUTH_TOKEN && !verifyToken(request, env.AUTH_TOKEN)) {
-        response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+      const auth = requireAuthorizedMailbox(request, env)
+      if ('response' in auth) {
+        response = auth.response
       } else {
         switch (url.pathname) {
           case '/api/inbox':
-            response = await handleInbox(url, env)
+            response = await handleInbox(url, env, auth.mailbox)
             break
           case '/api/code':
-            response = await handleGetCode(url, env)
+            response = await handleGetCode(url, env, auth.mailbox)
             break
           case '/api/email':
-            response = await handleGetEmail(url, env)
+            response = await handleGetEmail(url, env, auth.mailbox)
             break
           case '/api/send':
             if (request.method !== 'POST') {
               response = Response.json({ error: 'Method not allowed' }, { status: 405 })
             } else {
-              response = await handleSend(request, env)
+              response = await handleSend(request, env, auth.mailbox)
             }
             break
           case '/api/sync':
-            response = await handleSync(url, env)
+            response = await handleSync(url, env, auth.mailbox)
             break
           default:
             response = Response.json({ error: 'Not found' }, { status: 404 })
@@ -70,6 +74,8 @@ export default {
   async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
     const to = message.to
     const from = message.from
+    const mailbox = normalizeMailbox(to)
+    const fromAddress = normalizeMailbox(message.headers.get('from') ?? from)
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
@@ -87,10 +93,10 @@ export default {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
       `).bind(
         id,
-        to,
-        from,
+        mailbox,
+        fromAddress,
         fromName,
-        to,
+        mailbox,
         subject,
         parsed.bodyText.slice(0, 50000),
         parsed.bodyHtml.slice(0, 100000),
@@ -137,9 +143,12 @@ export default {
 
 // --- HTTP Handlers ---
 
-async function handleGetCode(url: URL, env: Env): Promise<Response> {
+async function handleGetCode(url: URL, env: Env, authorizedMailbox: string): Promise<Response> {
   const to = url.searchParams.get('to')
   if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
+  if (normalizeMailbox(to) !== authorizedMailbox) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const timeoutSec = Math.min(parseInt(url.searchParams.get('timeout') ?? '30'), 55)
   const since = url.searchParams.get('since')
@@ -147,7 +156,7 @@ async function handleGetCode(url: URL, env: Env): Promise<Response> {
 
   while (Date.now() < deadline) {
     let query = 'SELECT id, code, from_address, subject, received_at FROM emails WHERE mailbox = ? AND code IS NOT NULL'
-    const params: string[] = [to]
+    const params: string[] = [authorizedMailbox]
 
     if (since) {
       query += ' AND received_at > ?'
@@ -176,9 +185,12 @@ async function handleGetCode(url: URL, env: Env): Promise<Response> {
   return Response.json({ code: null })
 }
 
-async function handleInbox(url: URL, env: Env): Promise<Response> {
+async function handleInbox(url: URL, env: Env, authorizedMailbox: string): Promise<Response> {
   const to = url.searchParams.get('to')
   if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
+  if (normalizeMailbox(to) !== authorizedMailbox) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 100)
   const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
@@ -189,7 +201,7 @@ async function handleInbox(url: URL, env: Env): Promise<Response> {
     SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
            received_at, has_attachments, attachment_count
     FROM emails WHERE mailbox = ?`
-  const params: (string | number)[] = [to]
+  const params: (string | number)[] = [authorizedMailbox]
 
   if (direction === 'inbound' || direction === 'outbound') {
     sql += ' AND direction = ?'
@@ -197,8 +209,8 @@ async function handleInbox(url: URL, env: Env): Promise<Response> {
   }
 
   if (query) {
-    const pattern = `%${query}%`
-    sql += ' AND (subject LIKE ? OR body_text LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR code LIKE ?)'
+    const pattern = `%${escapeLike(query)}%`
+    sql += " AND (subject LIKE ? ESCAPE '\\' OR body_text LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR code LIKE ? ESCAPE '\\')"
     params.push(pattern, pattern, pattern, pattern, pattern)
   }
 
@@ -216,11 +228,11 @@ async function handleInbox(url: URL, env: Env): Promise<Response> {
   })
 }
 
-async function handleGetEmail(url: URL, env: Env): Promise<Response> {
+async function handleGetEmail(url: URL, env: Env, authorizedMailbox: string): Promise<Response> {
   const id = url.searchParams.get('id')
   if (!id) return Response.json({ error: 'Missing ?id= parameter' }, { status: 400 })
 
-  let row = await env.DB.prepare('SELECT * FROM emails WHERE id = ?').bind(id).first<{
+  let row = await env.DB.prepare('SELECT * FROM emails WHERE id = ? AND mailbox = ?').bind(id, authorizedMailbox).first<{
     id: string
     mailbox: string
     from_address: string
@@ -246,7 +258,7 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
 
   if (!row) {
     const safeId = id.replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const matches = await env.DB.prepare("SELECT * FROM emails WHERE id LIKE ? ESCAPE '\\' ORDER BY received_at DESC LIMIT 2").bind(`${safeId}%`).all<{
+    const matches = await env.DB.prepare("SELECT * FROM emails WHERE id LIKE ? ESCAPE '\\' AND mailbox = ? ORDER BY received_at DESC LIMIT 2").bind(`${safeId}%`, authorizedMailbox).all<{
       id: string
       mailbox: string
       from_address: string
@@ -309,7 +321,7 @@ async function handleGetEmail(url: URL, env: Env): Promise<Response> {
   })
 }
 
-async function handleSend(request: Request, env: Env): Promise<Response> {
+async function handleSend(request: Request, env: Env, authorizedMailbox: string): Promise<Response> {
   if (!env.RESEND_API_KEY) {
     return Response.json({ error: 'RESEND_API_KEY not configured' }, { status: 500 })
   }
@@ -329,6 +341,11 @@ async function handleSend(request: Request, env: Env): Promise<Response> {
   }
   if (!body.text && !body.html) {
     return Response.json({ error: 'Either text or html is required' }, { status: 400 })
+  }
+
+  const senderMailbox = normalizeMailbox(body.from)
+  if (senderMailbox !== authorizedMailbox) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Call Resend API
@@ -372,9 +389,9 @@ async function handleSend(request: Request, env: Env): Promise<Response> {
       body_text, body_html, code, headers, metadata, message_id,
       has_attachments, attachment_count, attachment_names, attachment_search_text,
       raw_storage_key, direction, status, received_at, created_at
-    ) VALUES (?, ?, ?, '', ?, ?, ?, ?, NULL, '{}', '{}', NULL, ?, ?, '', '', NULL, 'outbound', 'sent', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}', '{}', NULL, ?, ?, '', '', NULL, 'outbound', 'sent', ?, ?)
   `).bind(
-    id, body.from, body.from, body.to.join(', '), body.subject,
+    id, authorizedMailbox, senderMailbox, parseFromName(body.from), body.to.join(', '), body.subject,
     (body.text ?? '').slice(0, 50000), (body.html ?? '').slice(0, 100000),
     body.attachments?.length ? 1 : 0,
     body.attachments?.length ?? 0,
@@ -384,9 +401,12 @@ async function handleSend(request: Request, env: Env): Promise<Response> {
   return Response.json({ id, from: body.from })
 }
 
-async function handleSync(url: URL, env: Env): Promise<Response> {
+async function handleSync(url: URL, env: Env, authorizedMailbox: string): Promise<Response> {
   const to = url.searchParams.get('to')
   if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
+  if (normalizeMailbox(to) !== authorizedMailbox) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const since = url.searchParams.get('since') || '1970-01-01T00:00:00Z'
   const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '100'), 500)
@@ -395,7 +415,7 @@ async function handleSync(url: URL, env: Env): Promise<Response> {
   // Count total matching emails
   const countRow = await env.DB.prepare(
     'SELECT COUNT(*) as total FROM emails WHERE mailbox = ? AND received_at > ?'
-  ).bind(to, since).first<{ total: number }>()
+  ).bind(authorizedMailbox, since).first<{ total: number }>()
   const total = countRow?.total ?? 0
 
   // Get emails with full data
@@ -404,7 +424,7 @@ async function handleSync(url: URL, env: Env): Promise<Response> {
     WHERE mailbox = ? AND received_at > ?
     ORDER BY received_at ASC
     LIMIT ? OFFSET ?
-  `).bind(to, since, limit, offset).all()
+  `).bind(authorizedMailbox, since, limit, offset).all()
 
   // For each email, fetch attachments
   const emails = []
@@ -439,6 +459,16 @@ function parseFromName(from: string): string {
   return match ? match[1]!.trim() : ''
 }
 
+function normalizeMailbox(value: string): string {
+  const match = value.match(/<([^>]+)>/)
+  const mailbox = (match?.[1] ?? value).trim().toLowerCase()
+  return mailbox
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
   try {
@@ -448,7 +478,78 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
-function verifyToken(request: Request, token: string): boolean {
+function extractBearerToken(request: Request): string | null {
   const auth = request.headers.get('Authorization')
-  return auth === `Bearer ${token}`
+  if (!auth?.startsWith('Bearer ')) return null
+  return auth.slice(7)
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a)
+  const bBytes = new TextEncoder().encode(b)
+  const length = Math.max(aBytes.length, bBytes.length)
+  let diff = aBytes.length ^ bBytes.length
+
+  for (let i = 0; i < length; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0)
+  }
+
+  return diff === 0
+}
+
+function getMailboxTokens(env: Env): { tokens?: Map<string, string>; response?: Response } {
+  if (env.AUTH_TOKENS_JSON) {
+    try {
+      const parsed = JSON.parse(env.AUTH_TOKENS_JSON) as Record<string, unknown>
+      const tokens = new Map<string, string>()
+      for (const [mailbox, token] of Object.entries(parsed)) {
+        if (typeof token !== 'string' || !token.trim()) {
+          return { response: Response.json({ error: 'AUTH_TOKENS_JSON is invalid' }, { status: 503 }) }
+        }
+        tokens.set(normalizeMailbox(mailbox), token)
+      }
+      if (tokens.size === 0) {
+        return { response: Response.json({ error: 'AUTH_TOKENS_JSON is invalid' }, { status: 503 }) }
+      }
+      return { tokens }
+    } catch {
+      return { response: Response.json({ error: 'AUTH_TOKENS_JSON is invalid' }, { status: 503 }) }
+    }
+  }
+
+  if (env.AUTH_TOKEN && env.MAILBOX) {
+    return { tokens: new Map([[normalizeMailbox(env.MAILBOX), env.AUTH_TOKEN]]) }
+  }
+
+  if (env.AUTH_TOKEN && !env.MAILBOX) {
+    return { response: Response.json({ error: 'MAILBOX not configured' }, { status: 503 }) }
+  }
+
+  return { response: Response.json({ error: 'AUTH_TOKEN not configured' }, { status: 503 }) }
+}
+
+function requireAuthorizedMailbox(request: Request, env: Env): { mailbox: string } | { response: Response } {
+  const configured = getMailboxTokens(env)
+  if (configured.response) return { response: configured.response }
+
+  const token = extractBearerToken(request)
+  if (!token) {
+    return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  let matchedMailbox: string | null = null
+  for (const [mailbox, expectedToken] of configured.tokens!) {
+    if (timingSafeEqual(token, expectedToken)) {
+      if (matchedMailbox) {
+        return { response: Response.json({ error: 'Duplicate mailbox tokens are not allowed' }, { status: 503 }) }
+      }
+      matchedMailbox = mailbox
+    }
+  }
+
+  if (!matchedMailbox) {
+    return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  return { mailbox: matchedMailbox }
 }

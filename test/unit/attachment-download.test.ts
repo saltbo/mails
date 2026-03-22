@@ -133,7 +133,7 @@ describe('Remote provider: attachment download', () => {
     expect(new Uint8Array(result!.data)).toEqual(pdfContent)
   })
 
-  test('4. getAttachment uses /api/attachment in public mode', async () => {
+  test('4. getAttachment uses /api/attachment in self-hosted mode', async () => {
     let requestUrl = ''
     globalThis.fetch = mock(async (url: string) => {
       requestUrl = url

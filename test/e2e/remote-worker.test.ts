@@ -4,7 +4,7 @@
  * Tests the full CLI light client flow:
  *   CLI (remote provider) → Worker HTTP API (/api/*) → D1
  *
- * Also tests Worker AUTH_TOKEN enforcement.
+ * Also tests mailbox-scoped Worker token enforcement.
  *
  * Prerequisites:
  *   cd worker && bun install && npx wrangler d1 execute mails --local --file=schema.sql
@@ -21,8 +21,10 @@ import { execSync } from 'child_process'
 const WORKER_DIR = join(import.meta.dir, '../../worker')
 const PORT = 3170 // Use a different port to avoid conflicts
 const API = `http://localhost:${PORT}`
-const AUTH_TOKEN = 'e2e_test_token_' + Date.now()
+const MAILBOX_TOKEN = 'e2e_mailbox_token_' + Date.now()
+const OTHER_TOKEN = 'e2e_other_token_' + Date.now()
 const MAILBOX = `e2e-remote-${Date.now()}@test.com`
+const OTHER_MAILBOX = 'other@test.com'
 
 let workerProc: Subprocess | null = null
 
@@ -74,9 +76,13 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
       execSync(`cd ${WORKER_DIR} && npx wrangler d1 execute mails --local --command "${createSchema.replace(/\n/g, ' ').replace(/"/g, '\\"')}"`, { stdio: 'pipe' })
     } catch {}
 
-    // Write .dev.vars with AUTH_TOKEN so wrangler picks it up
+    // Write .dev.vars with mailbox-scoped tokens so wrangler picks it up
     const { writeFileSync: writeFile } = await import('fs')
-    writeFile(join(WORKER_DIR, '.dev.vars'), `AUTH_TOKEN=${AUTH_TOKEN}\n`)
+    const tokenMap = JSON.stringify({
+      [MAILBOX]: MAILBOX_TOKEN,
+      [OTHER_MAILBOX]: OTHER_TOKEN,
+    })
+    writeFile(join(WORKER_DIR, '.dev.vars'), `AUTH_TOKENS_JSON='${tokenMap}'\n`)
 
     // Start worker
     workerProc = spawn({
@@ -110,16 +116,16 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
     } catch {}
   })
 
-  // --- AUTH_TOKEN enforcement ---
+  // --- Mailbox token enforcement ---
 
-  test('rejects requests without token when AUTH_TOKEN is set', async () => {
+  test('rejects requests without token when mailbox tokens are configured', async () => {
     const res = await fetch(`${API}/api/inbox?to=${MAILBOX}`)
     expect(res.status).toBe(401)
   })
 
   test('accepts requests with correct token', async () => {
     const res = await fetch(`${API}/api/inbox?to=${MAILBOX}`, {
-      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+      headers: { Authorization: `Bearer ${MAILBOX_TOKEN}` },
     })
     expect(res.status).toBe(200)
     const data = await res.json() as { emails: any[] }
@@ -133,6 +139,13 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
     expect(res.status).toBe(401)
   })
 
+  test('rejects requests for another mailbox even with a valid token', async () => {
+    const res = await fetch(`${API}/api/code?to=${OTHER_MAILBOX}&timeout=1`, {
+      headers: { Authorization: `Bearer ${MAILBOX_TOKEN}` },
+    })
+    expect(res.status).toBe(403)
+  })
+
   test('/health is always public', async () => {
     const res = await fetch(`${API}/health`)
     expect(res.status).toBe(200)
@@ -141,7 +154,7 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
   // --- Remote provider (self-hosted mode) ---
 
   test('getEmails via remote provider', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     await provider.init()
 
     const emails = await provider.getEmails(MAILBOX, { limit: 10 })
@@ -150,7 +163,7 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
   })
 
   test('getEmail detail via remote provider', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const email = await provider.getEmail('remote-e1')
     expect(email).not.toBeNull()
     expect(email!.subject).toBe('Password reset')
@@ -158,39 +171,44 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
   })
 
   test('getEmail returns null for nonexistent', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     expect(await provider.getEmail('nonexistent')).toBeNull()
   })
 
+  test('getEmail does not expose another mailbox by id', async () => {
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
+    expect(await provider.getEmail('remote-e3')).toBeNull()
+  })
+
   test('getCode via remote provider', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const result = await provider.getCode(MAILBOX, { timeout: 3 })
     expect(result).not.toBeNull()
     expect(result!.code).toBe('112233')
   })
 
   test('searchEmails via remote provider', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const results = await provider.searchEmails(MAILBOX, { query: 'invoice' })
     expect(results).toHaveLength(1)
     expect(results[0]!.subject).toBe('Invoice ready')
   })
 
   test('searchEmails returns empty for no match', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const results = await provider.searchEmails(MAILBOX, { query: 'nonexistent_xyz' })
     expect(results).toHaveLength(0)
   })
 
   test('mailbox isolation — cannot see other mailbox emails', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const emails = await provider.getEmails(MAILBOX)
     expect(emails.every((e: Email) => e.mailbox === MAILBOX)).toBe(true)
     expect(emails.some((e: Email) => e.id === 'remote-e3')).toBe(false)
   })
 
   test('direction filter works', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     const outbound = await provider.getEmails(MAILBOX, { direction: 'outbound' })
     expect(outbound).toHaveLength(0) // all seeded emails are inbound
   })
@@ -198,7 +216,7 @@ describe('E2E: remote provider ↔ self-hosted Worker', () => {
   // --- saveEmail is read-only ---
 
   test('saveEmail throws', async () => {
-    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: AUTH_TOKEN })
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX, token: MAILBOX_TOKEN })
     expect(provider.saveEmail({} as Email)).rejects.toThrow('read-only')
   })
 })

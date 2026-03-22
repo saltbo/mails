@@ -1,9 +1,8 @@
 import type { SendProvider, SendResult } from '../../core/types.js'
-
-const DEFAULT_API_URL = 'https://mails-dev-worker.o-u-turing.workers.dev'
+import { resolveHostedApiUrl } from '../../core/api-url.js'
 
 export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendProvider {
-  const baseUrl = apiUrl || process.env.MAILS_API_URL || DEFAULT_API_URL
+  const baseUrl = resolveHostedApiUrl(apiUrl)
 
   return {
     name: 'mails.dev',

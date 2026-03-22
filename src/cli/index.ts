@@ -6,6 +6,7 @@ import { configCommand } from './commands/config.js'
 import { claimCommand } from './commands/claim.js'
 import { helpCommand } from './commands/help.js'
 import { syncCommand } from './commands/sync.js'
+import { CLI_VERSION } from '../version.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -39,7 +40,7 @@ async function main() {
     case 'version':
     case '--version':
     case '-v':
-      console.log('mails v1.5.1')
+      console.log(`mails v${CLI_VERSION}`)
       break
     default:
       console.error(`Unknown command: ${command}`)

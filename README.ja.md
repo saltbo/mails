@@ -61,7 +61,7 @@ AIエージェント向けのメールインフラ。プログラムでメール
 - **ストレージプロバイダー** — ローカルSQLite、[db9.ai](https://db9.ai)クラウドPostgreSQL、またはリモートWorker API
 - **ゼロランタイム依存** — Resend providerは `fetch()` のみ使用
 - **ホスティングサービス** — `mails claim` で無料 `@mails.dev` メールアドレス取得
-- **セルフホスト** — 独自Workerデプロイ、オプションのAUTH_TOKEN認証
+- **セルフホスト** — 独自Workerデプロイ、メールボックス単位の token 認証
 
 ## インストール
 
@@ -92,9 +92,13 @@ Resendキー不要 — ホスティングユーザーは月100通無料。無制
 ```bash
 cd worker && wrangler deploy             # 独自Workerをデプロイ
 wrangler secret put RESEND_API_KEY       # WorkerにResendキーを設定（送信用）
-wrangler secret put AUTH_TOKEN           # 認証トークンを設定（オプション）
+# 単一メールボックス:
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# 複数メールボックス:
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
+mails config set worker_token YOUR_MAILBOX_TOKEN
 mails config set mailbox agent@yourdomain.com
 mails send --to user@example.com --subject "Hello" --body "Hi"  # Worker経由で送信
 mails inbox                              # Worker APIに問い合わせ
@@ -230,13 +234,17 @@ wrangler deploy
 
 デプロイ後、Cloudflare Email Routingでこのworkerにメールを転送するよう設定してください。
 
-### Workerの認証設定（オプション）
+### Workerの認証設定
 
 ```bash
-wrangler secret put AUTH_TOKEN    # シークレットトークンを設定
+# 単一メールボックス:
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# 複数メールボックス:
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 ```
 
-`AUTH_TOKEN` を設定すると、すべての `/api/*` エンドポイントに `Authorization: Bearer <token>` が必要になります。`/health` は常に公開されます。
+すべての `/api/*` エンドポイントに `Authorization: Bearer <mailbox-token>` が必要です。この token は `?to=`、取得対象メール、または送信時の `from` と一致するメールボックス用である必要があります。`/health` は常に公開されます。mailbox token が未設定のまま `/api/*` にアクセスすると `503` を返します。
 
 ### Worker API
 
@@ -289,7 +297,7 @@ Worker HTTP APIに直接問い合わせます。`api_key` または `worker_url`
 | `mailbox` | | 受信メールアドレス |
 | `api_key` | | mails.devホスティングサービスAPIキー |
 | `worker_url` | | セルフホストWorker URL |
-| `worker_token` | | セルフホストWorker認証トークン |
+| `worker_token` | | セルフホストWorker用の mailbox token |
 | `resend_api_key` | | Resend APIキー |
 | `default_from` | | デフォルト送信者アドレス |
 | `storage_provider` | auto | `sqlite`、`db9`、`remote` |

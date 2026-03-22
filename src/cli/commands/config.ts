@@ -1,5 +1,18 @@
 import { loadConfig, getConfigValue, setConfigValue, resolveApiKey, CONFIG_FILE } from '../../core/config.js'
 
+function isSensitiveConfigKey(key: string): boolean {
+  return /(?:^|_)(?:token|key|secret)(?:$|_)/i.test(key)
+}
+
+function maskValue(value: string): string {
+  if (value.length <= 8) return '*'.repeat(value.length)
+  return `${value.slice(0, 4)}...${value.slice(-4)}`
+}
+
+function formatDisplayValue(key: string, value: string): string {
+  return isSensitiveConfigKey(key) ? maskValue(value) : value
+}
+
 export async function configCommand(args: string[]) {
   const subcommand = args[0]
 
@@ -12,7 +25,7 @@ export async function configCommand(args: string[]) {
         process.exit(1)
       }
       setConfigValue(key, value)
-      console.log(`Set ${key} = ${value}`)
+      console.log(`Set ${key} = ${formatDisplayValue(key, value)}`)
 
       // When api_key is set, auto-resolve mailbox from /v1/me
       if (key === 'api_key' && value.startsWith('mk_')) {
@@ -48,7 +61,13 @@ export async function configCommand(args: string[]) {
 
     default: {
       const config = loadConfig()
-      console.log(JSON.stringify(config, null, 2))
+      const displayConfig = Object.fromEntries(
+        Object.entries(config).map(([key, value]) => {
+          if (typeof value !== 'string') return [key, value]
+          return [key, formatDisplayValue(key, value)]
+        })
+      )
+      console.log(JSON.stringify(displayConfig, null, 2))
       break
     }
   }

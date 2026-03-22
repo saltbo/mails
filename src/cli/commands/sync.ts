@@ -1,4 +1,5 @@
 import { loadConfig, setConfigValue } from '../../core/config.js'
+import { resolveHostedApiUrl } from '../../core/api-url.js'
 import { getStorage } from '../../core/storage.js'
 import type { Email } from '../../core/types.js'
 
@@ -9,7 +10,7 @@ export async function syncCommand(args: string[]) {
   const workerUrl = config.worker_url
   const apiKey = config.api_key
   const baseUrl = apiKey
-    ? (process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev')
+    ? resolveHostedApiUrl()
     : workerUrl
 
   if (!baseUrl) {
@@ -20,6 +21,10 @@ export async function syncCommand(args: string[]) {
   const mailbox = config.mailbox
   if (!mailbox) {
     console.error('No mailbox configured. Run: mails config set mailbox <address>')
+    process.exit(1)
+  }
+  if (!apiKey && !config.worker_token) {
+    console.error('No worker_token configured. Run: mails config set worker_token <token>')
     process.exit(1)
   }
 

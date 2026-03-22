@@ -61,7 +61,7 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 - **Storage providers** — local SQLite, [db9.ai](https://db9.ai) cloud PostgreSQL, or remote Worker API
 - **Zero runtime dependencies** — Resend provider uses raw `fetch()`
 - **Hosted service** — free `@mails.dev` mailboxes via `mails claim`
-- **Self-hosted** — deploy your own Worker with optional AUTH_TOKEN
+- **Self-hosted** — deploy your own Worker with mailbox-scoped auth tokens
 
 ## Install
 
@@ -92,9 +92,13 @@ No Resend key needed — hosted users get 100 free sends/month. For unlimited se
 ```bash
 cd worker && wrangler deploy             # Deploy your own Worker
 wrangler secret put RESEND_API_KEY       # Set Resend key on Worker (for sending)
-wrangler secret put AUTH_TOKEN           # Set auth token (optional)
+# Single mailbox:
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# Multi mailbox:
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
+mails config set worker_token YOUR_MAILBOX_TOKEN
 mails config set mailbox agent@yourdomain.com
 mails send --to user@example.com --subject "Hello" --body "Hi"  # Sends via Worker
 mails inbox                              # Queries Worker API
@@ -230,13 +234,17 @@ wrangler deploy
 
 Then configure Cloudflare Email Routing to forward to this worker.
 
-### Secure the Worker (optional)
+### Secure the Worker
 
 ```bash
-wrangler secret put AUTH_TOKEN    # Set a secret token
+# Single mailbox:
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# Multi mailbox:
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 ```
 
-If `AUTH_TOKEN` is set, all `/api/*` endpoints require `Authorization: Bearer <token>`. `/health` is always public.
+All `/api/*` endpoints require `Authorization: Bearer <mailbox-token>`. The token must belong to the mailbox in `?to=`, the email being fetched, or the `from` address being sent. `/health` is always public. If no mailbox token config is present, `/api/*` returns `503`.
 
 ### Worker API
 
@@ -289,7 +297,7 @@ Queries the Worker HTTP API directly. Auto-enabled when `api_key` or `worker_url
 | `mailbox` | | Your receiving address |
 | `api_key` | | API key for mails.dev hosted service |
 | `worker_url` | | Self-hosted Worker URL |
-| `worker_token` | | Auth token for self-hosted Worker |
+| `worker_token` | | Mailbox token for self-hosted Worker |
 | `resend_api_key` | | Resend API key |
 | `default_from` | | Default sender address |
 | `storage_provider` | auto | `sqlite`, `db9`, or `remote` |

@@ -19,6 +19,9 @@ function resolveProvider(): SendProvider {
   }
 
   if (config.worker_url) {
+    if (!config.worker_token) {
+      throw new Error('worker_token not configured. Run: mails config set worker_token <token>')
+    }
     return createOSSSendProvider(config.worker_url, config.worker_token)
   }
 

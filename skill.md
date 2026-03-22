@@ -192,7 +192,7 @@ Pulls emails from your Worker (hosted or self-hosted) into local SQLite. Useful 
 | `default_from` | manual | Default sender address |
 | `storage_provider` | manual | `sqlite`, `db9`, or `remote` (auto-detected) |
 | `worker_url` | manual | Self-hosted Worker URL (enables remote provider) |
-| `worker_token` | manual | Auth token for self-hosted Worker |
+| `worker_token` | manual | Mailbox token for self-hosted Worker |
 
 ## Self-Hosted Setup
 
@@ -206,7 +206,11 @@ wrangler d1 create mails
 wrangler d1 execute mails --file=schema.sql
 wrangler deploy
 wrangler secret put RESEND_API_KEY       # Enable sending via Worker
-wrangler secret put AUTH_TOKEN           # Secure the API (optional)
+# Single mailbox:
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# Multi mailbox:
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 ```
 
 Then configure Cloudflare Email Routing to forward to this worker.
@@ -215,7 +219,7 @@ Configure the CLI to use your Worker:
 
 ```bash
 mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_AUTH_TOKEN
+mails config set worker_token YOUR_MAILBOX_TOKEN
 mails config set mailbox agent@yourdomain.com
 ```
 
@@ -340,29 +344,29 @@ curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/attachment?id=ATTACHMENT_ID" -o file.pdf
 ```
 
-### Self-hosted endpoints (your Worker, optional AUTH_TOKEN)
+### Self-hosted endpoints (your Worker, mailbox token required)
 
 ```bash
 # List inbox
-curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+curl -H "Authorization: Bearer YOUR_MAILBOX_TOKEN" \
   "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com"
 
 # Search inbox
-curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+curl -H "Authorization: Bearer YOUR_MAILBOX_TOKEN" \
   "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com&query=invoice"
 
 # Wait for verification code
-curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+curl -H "Authorization: Bearer YOUR_MAILBOX_TOKEN" \
   "https://your-worker.example.com/api/code?to=agent@yourdomain.com&timeout=30"
 
 # Send email (via Worker → Resend, records outbound in D1)
-curl -X POST -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_MAILBOX_TOKEN" \
   -H "Content-Type: application/json" \
   "https://your-worker.example.com/api/send" \
   -d '{"from":"agent@yourdomain.com","to":["user@example.com"],"subject":"Hello","text":"World"}'
 
 # Sync emails (incremental pull)
-curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+curl -H "Authorization: Bearer YOUR_MAILBOX_TOKEN" \
   "https://your-worker.example.com/api/sync?to=agent@yourdomain.com&since=2026-03-01T00:00:00Z"
 ```
 

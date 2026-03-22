@@ -24,6 +24,7 @@ async function freshGetStorage() {
     case 'remote': {
       const mailbox = config.mailbox || ''
       if (!mailbox) throw new Error('mailbox not configured')
+      if (!config.api_key && !config.worker_token) throw new Error('worker_token not configured')
       _provider = createRemoteProvider({
         url: config.worker_url || 'https://example.com',
         mailbox,
@@ -40,6 +41,7 @@ async function freshGetStorage() {
       if (config.api_key || config.worker_url) {
         const mailbox = config.mailbox || ''
         if (!mailbox) throw new Error('mailbox not configured')
+        if (!config.api_key && !config.worker_token) throw new Error('worker_token not configured')
         _provider = createRemoteProvider({
           url: config.worker_url || 'https://example.com',
           mailbox,
@@ -134,6 +136,19 @@ describe('storage resolver', () => {
     } as MailsConfig)
 
     expect(freshGetStorage()).rejects.toThrow('mailbox not configured')
+  })
+
+  test('throws when self-hosted remote has no worker_token', async () => {
+    saveConfig({
+      mode: 'selfhosted',
+      domain: 'test.com',
+      mailbox: 'agent@test.com',
+      send_provider: 'resend',
+      storage_provider: 'remote',
+      worker_url: 'https://my-worker.example.com',
+    } as unknown as MailsConfig)
+
+    expect(freshGetStorage()).rejects.toThrow('worker_token not configured')
   })
 
   test('throws for db9 without token', async () => {

@@ -61,7 +61,7 @@
 - **存储 Provider** — 本地 SQLite、[db9.ai](https://db9.ai) 云端 PostgreSQL、或远程 Worker API
 - **零运行时依赖** — Resend provider 仅使用原生 `fetch()`
 - **托管服务** — 通过 `mails claim` 免费获取 `@mails.dev` 邮箱
-- **自部署** — 部署自己的 Worker，支持可选的 AUTH_TOKEN 鉴权
+- **自部署** — 部署自己的 Worker，并使用 mailbox 级 token 鉴权
 
 ## 安装
 
@@ -92,9 +92,13 @@ mails code --to myagent@mails.dev    # 等待验证码
 ```bash
 cd worker && wrangler deploy             # 部署你自己的 Worker
 wrangler secret put RESEND_API_KEY       # 在 Worker 上设置 Resend 密钥（用于发送）
-wrangler secret put AUTH_TOKEN           # 设置鉴权 token（可选）
+# 单邮箱：
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# 多邮箱：
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
+mails config set worker_token YOUR_MAILBOX_TOKEN
 mails config set mailbox agent@yourdomain.com
 mails send --to user@example.com --subject "Hello" --body "Hi"  # 通过 Worker 发送
 mails inbox                              # 查询 Worker API
@@ -230,13 +234,17 @@ wrangler deploy
 
 然后在 Cloudflare Email Routing 中配置转发到该 Worker。
 
-### 安全配置（可选）
+### 安全配置
 
 ```bash
-wrangler secret put AUTH_TOKEN    # 设置密钥 token
+# 单邮箱：
+#   MAILBOX=agent@yourdomain.com
+#   AUTH_TOKEN=YOUR_MAILBOX_TOKEN
+# 多邮箱：
+#   AUTH_TOKENS_JSON={"agent@yourdomain.com":"token1","other@yourdomain.com":"token2"}
 ```
 
-设置 `AUTH_TOKEN` 后，所有 `/api/*` 端点都需要 `Authorization: Bearer <token>` 鉴权。`/health` 始终公开。
+所有 `/api/*` 端点都需要 `Authorization: Bearer <mailbox-token>`。这个 token 必须和 `?to=`、被读取的邮件、或发送时的 `from` 邮箱一致。`/health` 始终公开。若未配置 mailbox token，访问 `/api/*` 会返回 `503`。
 
 ### Worker API
 
@@ -289,7 +297,7 @@ mails config set db9_database_id YOUR_DB_ID
 | `mailbox` | | 接收邮箱地址 |
 | `api_key` | | mails.dev 托管服务 API key |
 | `worker_url` | | 自部署 Worker URL |
-| `worker_token` | | 自部署 Worker 鉴权 token |
+| `worker_token` | | 自部署 Worker 的 mailbox token |
 | `resend_api_key` | | Resend API 密钥 |
 | `default_from` | | 默认发件人地址 |
 | `storage_provider` | auto | `sqlite`、`db9` 或 `remote` |

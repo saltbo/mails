@@ -5,7 +5,7 @@
  *   RESEND_API_KEY=re_xxx
  *   DEFAULT_FROM=Name <noreply@yourdomain.com>  (must NOT be @mails.dev to avoid suppression)
  *   TEST_TO=your-email@example.com
- *   WORKER_URL=https://mails-dev-worker.o-u-turing.workers.dev
+ *   WORKER_URL=https://api.mails.dev
  *
  * Run:  bun test test/e2e/live.test.ts
  */
@@ -17,7 +17,7 @@ import { setConfigValue } from '../../src/core/config'
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const DEFAULT_FROM = process.env.DEFAULT_FROM
 const TEST_TO = process.env.TEST_TO
-const WORKER_URL = process.env.WORKER_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const WORKER_URL = process.env.WORKER_URL || 'https://api.mails.dev'
 
 const skip = !RESEND_API_KEY || !DEFAULT_FROM || !TEST_TO
 

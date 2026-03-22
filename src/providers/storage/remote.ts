@@ -7,7 +7,7 @@ interface RemoteProviderOptions {
   mailbox: string
   /** API key (for mails.dev hosted /v1/* endpoints). If set, uses /v1/* paths. */
   apiKey?: string
-  /** Auth token (api_key or worker_token). Sent as Bearer header. */
+  /** Auth token (api_key or worker_token). Sent as Bearer header. For self-hosted /api/* this should be the mailbox token. */
   token?: string
 }
 
@@ -29,8 +29,8 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
     return fetch(endpoint.toString(), { headers })
   }
 
-  // Authenticated endpoints (/v1/*) don't need ?to= — api_key is scoped to mailbox.
-  // Public endpoints (/api/*) need ?to= to specify the mailbox.
+  // Hosted endpoints (/v1/*) don't need ?to= — api_key is scoped to mailbox.
+  // Self-hosted endpoints (/api/*) still need ?to= and a mailbox token.
   function inboxPath() { return useAuthApi ? '/v1/inbox' : '/api/inbox' }
   function codePath() { return useAuthApi ? '/v1/code' : '/api/code' }
   function emailPath() { return useAuthApi ? '/v1/email' : '/api/email' }

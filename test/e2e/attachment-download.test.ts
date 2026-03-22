@@ -27,7 +27,7 @@ import { createRemoteProvider } from '../../src/providers/storage/remote'
 import { createResendProvider } from '../../src/providers/send/resend'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const WORKER_URL = process.env.WORKER_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const WORKER_URL = process.env.WORKER_URL || 'https://api.mails.dev'
 
 // Part A: OSS worker (test.mails.dev)
 const OSS_WORKER_URL = process.env.OSS_WORKER_URL || 'https://mails-oss-test.o-u-turing.workers.dev'

@@ -52,6 +52,7 @@ describe('CLI: sync command', () => {
       send_provider: 'resend',
       storage_provider: 'sqlite',
       worker_url: 'http://localhost:8787',
+      worker_token: 'wt_secret',
     })
   })
 
@@ -248,6 +249,27 @@ describe('CLI: sync command', () => {
     const { syncCommand } = await importSyncCommand()
     await expect(syncCommand([])).rejects.toThrow('exit:1')
     expect(errors.join('\n')).toContain('No mailbox configured')
+  })
+
+  test('sync errors when self-hosted worker_token is missing', async () => {
+    saveConfig({
+      mode: 'selfhosted',
+      domain: 'mails.dev',
+      mailbox: 'agent@test.com',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      worker_url: 'http://localhost:8787',
+    })
+
+    const errors: string[] = []
+    console.log = () => {}
+    console.error = (msg?: unknown) => { errors.push(String(msg ?? '')) }
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+    process.stdout.write = (() => true) as typeof process.stdout.write
+
+    const { syncCommand } = await importSyncCommand()
+    await expect(syncCommand([])).rejects.toThrow('exit:1')
+    expect(errors.join('\n')).toContain('No worker_token configured')
   })
 
   test('sync sends api_key as Bearer token for hosted mode', async () => {

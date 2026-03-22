@@ -11,7 +11,7 @@
  *
  * Requires .env with:
  *   RESEND_API_KEY=re_xxx           (kimeeru domain, for sending TO mails.dev)
- *   WORKER_URL=https://mails-dev-worker.o-u-turing.workers.dev
+ *   WORKER_URL=https://api.mails.dev
  *
  * Run: bun test test/e2e/full-hosted.test.ts
  */
@@ -24,7 +24,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY // kimeeru key for sending TO mails.dev
-const WORKER_URL = process.env.WORKER_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const WORKER_URL = process.env.WORKER_URL || 'https://api.mails.dev'
 // Pre-claimed mailbox for full E2E — set in .env or claim manually first
 const TEST_MAILBOX = process.env.E2E_MAILBOX || ''
 const TEST_API_KEY = process.env.E2E_API_KEY || ''

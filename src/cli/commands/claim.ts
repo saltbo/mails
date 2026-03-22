@@ -1,6 +1,7 @@
 import { setConfigValue } from '../../core/config.js'
+import { resolveHostedApiUrl } from '../../core/api-url.js'
 
-const API_BASE = process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const API_BASE = resolveHostedApiUrl()
 const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails.dev'
 const POLL_INTERVAL = 2000
 

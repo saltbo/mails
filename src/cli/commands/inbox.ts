@@ -1,5 +1,5 @@
 import { writeFile, mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { getInbox, searchInbox, getEmail, downloadAttachment } from '../../core/receive.js'
 import { loadConfig } from '../../core/config.js'
 
@@ -68,7 +68,8 @@ export async function inboxCommand(args: string[]) {
             console.error(`Attachment not found: ${att.id}`)
             continue
           }
-          const dest = join(dir, download.filename)
+          const filename = basename(download.filename) || 'download'
+          const dest = join(dir, filename)
           await writeFile(dest, Buffer.from(download.data))
           console.log(`Saved: ${dest}`)
         } catch (err) {

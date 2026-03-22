@@ -11,9 +11,9 @@ describe('Remote provider', () => {
     globalThis.fetch = originalFetch
   })
 
-  // --- Public mode (self-hosted, no apiKey) ---
+  // --- Self-hosted mode (/api/* with mailbox token) ---
 
-  test('getEmails calls /api/inbox with ?to= in public mode', async () => {
+  test('getEmails calls /api/inbox with ?to= in self-hosted mode', async () => {
     let requestUrl = ''
     globalThis.fetch = mock(async (url: string) => {
       requestUrl = url
@@ -31,7 +31,7 @@ describe('Remote provider', () => {
     expect(emails).toHaveLength(1)
   })
 
-  test('getCode calls /api/code with ?to= in public mode', async () => {
+  test('getCode calls /api/code with ?to= in self-hosted mode', async () => {
     let requestUrl = ''
     globalThis.fetch = mock(async (url: string) => {
       requestUrl = url
@@ -130,9 +130,9 @@ describe('Remote provider', () => {
     expect(requestUrl).toContain('since=2025-01-01')
   })
 
-  // --- Self-hosted with worker_token ---
+  // --- Self-hosted auth ---
 
-  test('sends Bearer header with worker_token in public mode', async () => {
+  test('sends Bearer header with worker_token in self-hosted mode', async () => {
     let authHeader = ''
     globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
       authHeader = (init?.headers as Record<string, string>)?.['Authorization'] ?? ''

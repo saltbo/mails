@@ -176,7 +176,12 @@ describe('send', () => {
   })
 
   test('worker_url takes priority over resend_api_key', async () => {
-    saveConfig({ ...BASE_CONFIG, resend_api_key: 're_should_not_use', worker_url: 'https://my-worker.example.com' })
+    saveConfig({
+      ...BASE_CONFIG,
+      resend_api_key: 're_should_not_use',
+      worker_url: 'https://my-worker.example.com',
+      worker_token: 'tok_priority',
+    })
 
     let requestUrl = ''
     globalThis.fetch = mock(async (url: string) => {
@@ -187,5 +192,13 @@ describe('send', () => {
     const result = await send({ to: 'user@example.com', subject: 'Priority', text: 'test' })
     expect(requestUrl).toContain('/api/send')
     expect(result.provider).toBe('oss')
+  })
+
+  test('throws when worker_url is configured without worker_token', async () => {
+    saveConfig({ ...BASE_CONFIG, resend_api_key: undefined, worker_url: 'https://my-worker.example.com' })
+
+    expect(
+      send({ to: 'user@example.com', subject: 'Missing token', text: 'test' })
+    ).rejects.toThrow('worker_token not configured')
   })
 })

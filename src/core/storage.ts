@@ -1,5 +1,6 @@
 import type { StorageProvider } from './types.js'
 import { loadConfig, resolveApiKey } from './config.js'
+import { resolveHostedApiUrl } from './api-url.js'
 import { createSqliteProvider } from '../providers/storage/sqlite.js'
 import { createDb9Provider } from '../providers/storage/db9.js'
 import { createRemoteProvider } from '../providers/storage/remote.js'
@@ -53,9 +54,12 @@ async function resolveRemoteProvider(config: {
   worker_token?: string
   mailbox?: string
 }): Promise<StorageProvider> {
-  const apiUrl = process.env.MAILS_API_URL
-    || config.worker_url
-    || 'https://mails-dev-worker.o-u-turing.workers.dev'
+  const apiUrl = config.api_key
+    ? resolveHostedApiUrl()
+    : config.worker_url
+  if (!apiUrl) {
+    throw new Error('worker_url not configured. Run: mails config set worker_url <url>')
+  }
 
   let mailbox = config.mailbox || ''
 
@@ -68,12 +72,14 @@ async function resolveRemoteProvider(config: {
     throw new Error('mailbox not configured. Run: mails config set mailbox <address>')
   }
 
-  const token = config.api_key || config.worker_token
+  if (!config.api_key && !config.worker_token) {
+    throw new Error('worker_token not configured. Run: mails config set worker_token <token>')
+  }
 
   return createRemoteProvider({
     url: apiUrl,
     mailbox,
     apiKey: config.api_key,
-    token,
+    token: config.api_key || config.worker_token,
   })
 }
