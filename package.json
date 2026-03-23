@@ -1,6 +1,6 @@
 {
   "name": "mails",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Email infrastructure for AI agents",
   "type": "module",
   "main": "dist/index.js",
