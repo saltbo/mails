@@ -208,6 +208,13 @@ async function handleDeleteMailbox(request: Request, env: Env): Promise<Response
     return Response.json({ error: 'Mailbox not found' }, { status: 404 })
   }
 
+  await env.DB.batch([
+    env.DB.prepare(
+      'DELETE FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)'
+    ).bind(mailbox),
+    env.DB.prepare('DELETE FROM emails WHERE mailbox = ?').bind(mailbox),
+  ])
+
   return Response.json({ deleted: mailbox })
 }
 
