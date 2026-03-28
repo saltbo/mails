@@ -11,6 +11,8 @@ export interface Env {
   AUTH_TOKENS_JSON?: string
   /** Resend API key for outbound email sending. */
   RESEND_API_KEY?: string
+  /** Admin token for mailbox management. */
+  ADMIN_TOKEN?: string
 }
 
 export default {
@@ -32,7 +34,12 @@ export default {
     if (url.pathname === '/health') {
       response = Response.json({ ok: true })
     } else if (url.pathname.startsWith('/api/')) {
-      const auth = requireAuthorizedMailbox(request, env)
+      if (url.pathname === '/api/mailboxes' && request.method === 'POST') {
+        response = await handleCreateMailbox(request, env)
+      } else if (url.pathname === '/api/mailboxes' && request.method === 'DELETE') {
+        response = await handleDeleteMailbox(request, env)
+      } else {
+      const auth = await requireAuthorizedMailbox(request, env)
       if ('response' in auth) {
         response = auth.response
       } else {
@@ -59,6 +66,7 @@ export default {
           default:
             response = Response.json({ error: 'Not found' }, { status: 404 })
         }
+      }
       }
     } else {
       response = Response.json({ name: 'mails-worker', version: '1.0.0' })
@@ -142,6 +150,66 @@ export default {
 } satisfies ExportedHandler<Env>
 
 // --- HTTP Handlers ---
+
+async function handleCreateMailbox(request: Request, env: Env): Promise<Response> {
+  if (!env.ADMIN_TOKEN) {
+    return Response.json({ error: 'ADMIN_TOKEN not configured' }, { status: 503 })
+  }
+  const token = extractBearerToken(request)
+  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json() as { mailbox?: string }
+  if (!body.mailbox || typeof body.mailbox !== 'string') {
+    return Response.json({ error: 'Missing required field: mailbox' }, { status: 400 })
+  }
+
+  const mailbox = normalizeMailbox(body.mailbox)
+
+  const existing = await env.DB.prepare(
+    'SELECT token FROM mailboxes WHERE mailbox = ?'
+  ).bind(mailbox).first<{ token: string }>()
+
+  if (existing) {
+    return Response.json({ mailbox, token: existing.token })
+  }
+
+  const newToken = crypto.randomUUID()
+  const now = new Date().toISOString()
+  await env.DB.prepare(
+    'INSERT INTO mailboxes (mailbox, token, created_at) VALUES (?, ?, ?)'
+  ).bind(mailbox, newToken, now).run()
+
+  return Response.json({ mailbox, token: newToken }, { status: 201 })
+}
+
+async function handleDeleteMailbox(request: Request, env: Env): Promise<Response> {
+  if (!env.ADMIN_TOKEN) {
+    return Response.json({ error: 'ADMIN_TOKEN not configured' }, { status: 503 })
+  }
+  const token = extractBearerToken(request)
+  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json() as { mailbox?: string }
+  if (!body.mailbox || typeof body.mailbox !== 'string') {
+    return Response.json({ error: 'Missing required field: mailbox' }, { status: 400 })
+  }
+
+  const mailbox = normalizeMailbox(body.mailbox)
+
+  const result = await env.DB.prepare(
+    'DELETE FROM mailboxes WHERE mailbox = ?'
+  ).bind(mailbox).run()
+
+  if (!result.meta.changes) {
+    return Response.json({ error: 'Mailbox not found' }, { status: 404 })
+  }
+
+  return Response.json({ deleted: mailbox })
+}
 
 async function handleGetCode(url: URL, env: Env, authorizedMailbox: string): Promise<Response> {
   const to = url.searchParams.get('to')
@@ -525,10 +593,10 @@ function getMailboxTokens(env: Env): { tokens?: Map<string, string>; response?: 
     return { response: Response.json({ error: 'MAILBOX not configured' }, { status: 503 }) }
   }
 
-  return { response: Response.json({ error: 'AUTH_TOKEN not configured' }, { status: 503 }) }
+  return { tokens: new Map() }
 }
 
-function requireAuthorizedMailbox(request: Request, env: Env): { mailbox: string } | { response: Response } {
+async function requireAuthorizedMailbox(request: Request, env: Env): Promise<{ mailbox: string } | { response: Response }> {
   const configured = getMailboxTokens(env)
   if (configured.response) return { response: configured.response }
 
@@ -548,6 +616,10 @@ function requireAuthorizedMailbox(request: Request, env: Env): { mailbox: string
   }
 
   if (!matchedMailbox) {
+    const row = await env.DB.prepare(
+      'SELECT mailbox FROM mailboxes WHERE token = ?'
+    ).bind(token).first<{ mailbox: string }>()
+    if (row) return { mailbox: row.mailbox }
     return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
